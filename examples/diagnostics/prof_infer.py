@@ -14,11 +14,13 @@ Method notes:
   mathematical no-op (each pixel lands in exactly one tile), so only tile COUNT
   changes across the sweep — which is exactly the variable we want to isolate.
 
-Same env contract as eval_ckpt.py: point PROF_YAML / PROF_CKPT at the 2D or the
-3D checkpoint and run once per model.
+Same argument contract as eval_ckpt.py: point --config / --ckpt at the 2D or the
+3D checkpoint and run once per model. Superseded by prof_pipeline.py (built-in
+per-node profiler); kept because it validated those numbers independently.
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 import time
@@ -33,14 +35,23 @@ from cuvis_ai_schemas.execution import Context
 from cuvis_ai_unet.tiling import compute_tile_offsets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UNET = "/mnt/data/anish/cuvis-ai-unet/plugins.yaml"
-AUG = os.path.join(HERE, "augment_local.yaml")
-CSV = os.path.join(HERE, "lentils_seg_splits_adaclip.csv")
-YAML = os.environ.get("PROF_YAML", os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
-CKPT = os.environ.get("PROF_CKPT", "/mnt/data/dev/diag_2d128_pipeline.pt")
-FRAMES = int(os.environ.get("PROF_FRAMES", "8"))
-WARMUP = int(os.environ.get("PROF_WARMUP", "2"))
-OVERLAPS = [float(x) for x in os.environ.get("PROF_OVERLAPS", "0,0.25,0.5").split(",")]
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+
+ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("--ckpt", required=True, help="raw torch_layers.state_dict() .pt")
+ap.add_argument("--splits-csv", required=True)
+ap.add_argument("--config", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
+ap.add_argument("--frames", type=int, default=8)
+ap.add_argument("--warmup", type=int, default=2)
+ap.add_argument("--overlaps", default="0,0.25,0.5")
+ap.add_argument("--unet-manifest", default=os.path.join(REPO_ROOT, "plugins.yaml"))
+ap.add_argument("--augment-manifest",
+                default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml"))
+args = ap.parse_args()
+UNET, AUG, CSV = args.unet_manifest, args.augment_manifest, args.splits_csv
+YAML, CKPT = args.config, args.ckpt
+FRAMES, WARMUP = args.frames, args.warmup
+OVERLAPS = [float(x) for x in args.overlaps.split(",")]
 
 
 def _sync() -> None:

@@ -4,6 +4,7 @@ Times the exact tiled-predict path (cuvis_ai_unet.tiling.sliding_window_inferenc
 on one real lentils frame, for 3D@128 and 2D@128 with the deep [32..512] net.
 CPU is timed on a small region (tractable) and extrapolated per-tile; GPU is timed
 on the full frame. Weights are untrained — timing is weight-independent."""
+import argparse
 import glob
 import time
 
@@ -13,9 +14,11 @@ import torch
 from cuvis_ai_unet.node.dynunet import DynUNet
 from cuvis_ai_unet.tiling import compute_tile_offsets, sliding_window_inference
 
-CUBE = np.load(sorted(glob.glob("/mnt/data/dev/lentils_npz_adaclip/*.npz"))[0])["cube"].astype(
-    "float32"
-)
+ap = argparse.ArgumentParser(description=__doc__)
+ap.add_argument("--npz-dir", required=True, help="directory of lentils .npz frames (first is used)")
+args = ap.parse_args()
+
+CUBE = np.load(sorted(glob.glob(args.npz_dir + "/*.npz"))[0])["cube"].astype("float32")
 Hf, Wf, C = CUBE.shape
 TILE = 128
 

@@ -37,6 +37,7 @@ def fg_iou(pred: torch.Tensor, target: torch.Tensor) -> float:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--npz-dir", required=True, help="directory of lentils .npz frames")
     ap.add_argument("--steps", type=int, default=60)
     ap.add_argument("--tile", type=int, default=128)
     ap.add_argument("--frames", type=int, default=12)
@@ -44,7 +45,7 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # ---- brief patch training (binary, 2d)
-    train_files, val_files = split_labeled("/mnt/data/dev/lentils_npz", "mask", args.frames, 0.25)
+    train_files, val_files = split_labeled(args.npz_dir, "mask", args.frames, 0.25)
     ds = LentilsPatchDataset(train_files, "mask", args.tile, 4, seed=0)
     loader = torch.utils.data.DataLoader(ds, batch_size=4, shuffle=True, drop_last=True)
     bands = ds.samples[0][0].shape[-1]
@@ -73,7 +74,7 @@ def main() -> None:
     assert eq_u and eq_g, "input==tile equivalence FAILED"
 
     # ---- full labeled frame: single-pass vs tiled
-    frame = labeled_frames("/mnt/data/dev/lentils_npz", "mask")[args.frames]  # unseen frame
+    frame = labeled_frames(args.npz_dir, "mask")[args.frames]  # unseen frame
     z = np.load(frame)
     cube = z["cube"].astype(np.float32)
     mu = cube.reshape(-1, cube.shape[-1]).mean(0)

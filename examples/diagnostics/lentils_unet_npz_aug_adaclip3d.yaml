@@ -1,6 +1,6 @@
 metadata:
-  name: lentils_unet_npz_aug_zscore_scalar
-  description: Two-phase DynUNet binary segmentation — global scalar z-score (spectral-shape preserving)
+  name: lentils_unet_npz_aug_adaclip3d
+  description: Two-phase DynUNet 3D (spectral-aware) binary seg on the AdaCLIP split — 128px patches, deep 5-stage
   author: Anish Raj
 
 plugins:
@@ -22,21 +22,22 @@ nodes:
       - {type: RandomForegroundBiasedCrop, size: [128, 128], fg_percent: 0.5, probabilistic: true}
       - {type: RandomHorizontalFlip, prob: 0.5}
 
-# Enhanced core ZScoreNormalizer (cuvis-ai PR #53): ONE global scalar mean/std,
-# fit in Phase 1 and serialized with the pipeline.
+# Scalar z-score (winner of the 4-way comparison; spectral-shape preserving).
 - name: Norm
   class_name: cuvis_ai.node.normalization.ZScoreNormalizer
   hparams:
     use_running_stats: true
     max_init_frames: 100  # cap stat-init frames (scalar z-score is stable well under this) -> ~minutes not ~1h
 
+# 3D mode: convolves along the spectral (band) axis — hierarchical spectral features,
+# not just spectral mixing at layer 1. 128px spatial fits VRAM; 256px 3D OOMs under contention.
 - name: DynUNet
   class_name: cuvis_ai_unet.node.dynunet.DynUNet
   hparams:
-    mode: "2d"
+    mode: "3d"
     in_channels: 61
     num_classes: 2
-    features: [16, 32, 64]
+    features: [32, 64, 128, 256, 512]
     tile_size: 128
     tile_overlap: 0.5
     tile_gaussian: true
@@ -51,14 +52,19 @@ nodes:
   hparams:
     weight: 1.0
 
+# Norm sits upstream of Augment (full-frame statistics structurally, at fit and
+# apply time); for running-stats z-score this is numerically equivalent to the
+# old Augment-first order (elementwise affine commutes with cropping). The
+# nodes list order above is deliberately unchanged: raw diagnostic checkpoints
+# are index-keyed against it.
 connections:
 - source: DataSource.outputs.cube
-  target: Augment.inputs.cube
+  target: Norm.inputs.data
 - source: DataSource.outputs.mask
   target: Augment.inputs.mask
-- source: Augment.outputs.cube
-  target: Norm.inputs.data
 - source: Norm.outputs.normalized
+  target: Augment.inputs.cube
+- source: Augment.outputs.cube
   target: DynUNet.inputs.data
 - source: DynUNet.outputs.logits
   target: DiceLoss.inputs.logits

@@ -6,6 +6,7 @@ tiled path and a direct full-frame forward. Distinguishes soft-prob-never-crosse
 direct succeeds)."""
 from __future__ import annotations
 
+import argparse
 import os
 
 import torch
@@ -21,14 +22,23 @@ from cuvis_ai_schemas.training.optimizer import OptimizerConfig
 from cuvis_ai_schemas.training.trainer import TrainerConfig
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UNET = "/mnt/data/anish/cuvis-ai-unet/plugins.yaml"
-AUG = os.path.join(HERE, "augment_local.yaml")
-CSV = os.path.join(HERE, "lentils_seg_splits_adaclip.csv")
-YAML = os.environ.get("DIAG_YAML", os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
-CKPT = os.environ.get("DIAG_CKPT", "/mnt/data/dev/diag_2d128_pipeline.pt")
-EPOCHS = int(os.environ.get("DIAG_EPOCHS", "25"))
-NW = int(os.environ.get("DIAG_NW", "4"))
-BATCH = int(os.environ.get("DIAG_BATCH", "8"))  # 3D@128 needs 4 (batch 8 OOMs the GPU)
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+
+ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("--splits-csv", required=True)
+ap.add_argument("--ckpt-out", required=True, help="where to save the raw torch_layers state_dict")
+ap.add_argument("--config", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
+ap.add_argument("--epochs", type=int, default=25)
+ap.add_argument("--num-workers", type=int, default=4)
+ap.add_argument("--batch", type=int, default=8, help="3D@128 needs 4 (batch 8 OOMs the GPU)")
+ap.add_argument("--no-val", action="store_true", help="disable the trainer's full-frame validation")
+ap.add_argument("--unet-manifest", default=os.path.join(REPO_ROOT, "plugins.yaml"))
+ap.add_argument("--augment-manifest",
+                default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml"))
+args = ap.parse_args()
+UNET, AUG = args.unet_manifest, args.augment_manifest
+CSV, YAML, CKPT = args.splits_csv, args.config, args.ckpt_out
+EPOCHS, NW, BATCH = args.epochs, args.num_workers, args.batch
 
 
 def fg_stats(logits_bhwc):
@@ -42,12 +52,12 @@ def main() -> None:
     reg = NodeRegistry()
     reg.register_plugin(UNET)
     reg.register_plugin(AUG)
-    pipe = PipelineBuilder().build_from_config(YAML)
+    pipe = PipelineBuilder(node_registry=reg).build_from_config(YAML)
     nodes = {n.name: n for n in pipe.nodes}
     dm = MultiNpzDataModule(
         splits_csv=CSV, split="test", batch_size=BATCH, num_workers=NW, persistent_workers=NW > 0
     )
-    if os.environ.get("DIAG_NO_VAL") == "1":
+    if args.no_val:
         # The trainer's built-in val runs DynUNet on FULL frames; in 3D that OOMs
         # (InstanceNorm3d over the whole 1000x1080 volume). We don't need it — real
         # metrics come from eval_ckpt.py (tiled, batch 1). Feed an EMPTY val loader

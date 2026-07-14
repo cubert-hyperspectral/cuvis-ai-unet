@@ -1,9 +1,17 @@
-"""Load a saved diag pipeline .pt and evaluate on the AdaCLIP test split (GPU, tiled):
+"""Evaluate a raw index-keyed diagnostic checkpoint on a splits CSV (GPU, tiled):
   - pixel-level foreground IoU + Dice (on object frames), and
   - image-level AUROC (object vs normal frame) from image scores.
-No DataLoader (frames read directly) so it can run alongside other jobs."""
+No DataLoader (frames read directly) so it can run alongside other jobs.
+
+This is the metric oracle behind the published champion numbers; `evaluate.py`
+in ../lentils is the artifact-based front door with the same math. Raw
+checkpoints are INDEX-keyed (torch_layers position): any missing/unexpected key
+is a hard error unless --allow-partial, because a reordered config silently
+misassigns weights under strict=False.
+"""
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 
@@ -16,11 +24,7 @@ from cuvis_ai_schemas.enums import ExecutionStage
 from cuvis_ai_schemas.execution import Context
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UNET = "/mnt/data/anish/cuvis-ai-unet/plugins.yaml"
-AUG = os.path.join(HERE, "augment_local.yaml")
-CSV = os.path.join(HERE, "lentils_seg_splits_adaclip.csv")
-YAML = os.environ.get("EVAL_YAML", os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
-CKPT = os.environ.get("EVAL_CKPT", "/mnt/data/dev/diag_2d128_pipeline.pt")
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
 
 def auroc(scores: np.ndarray, labels: np.ndarray) -> float:
@@ -46,26 +50,45 @@ def auroc(scores: np.ndarray, labels: np.ndarray) -> float:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--config", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"),
+                    help="pipeline config YAML the checkpoint was saved under")
+    ap.add_argument("--ckpt", required=True, help="raw torch_layers.state_dict() .pt")
+    ap.add_argument("--splits-csv", required=True)
+    ap.add_argument("--split", default="test")
+    ap.add_argument("--overlap", type=float, default=None, help="override tile_overlap")
+    ap.add_argument("--tile-batch", type=int, default=None, help="override tile_batch")
+    ap.add_argument("--allow-partial", action="store_true",
+                    help="tolerate missing/unexpected checkpoint keys (DANGEROUS: index-keyed)")
+    ap.add_argument("--unet-manifest", default=os.path.join(REPO_ROOT, "plugins.yaml"))
+    ap.add_argument("--augment-manifest",
+                    default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml"))
+    args = ap.parse_args()
+
     reg = NodeRegistry()
-    reg.register_plugin(UNET)
-    reg.register_plugin(AUG)
-    pipe = PipelineBuilder().build_from_config(YAML)
+    reg.register_plugin(args.unet_manifest)
+    reg.register_plugin(args.augment_manifest)
+    pipe = PipelineBuilder(node_registry=reg).build_from_config(args.config)
     nodes = {n.name: n for n in pipe.nodes}
 
-    sd = torch.load(CKPT, map_location="cpu")
+    sd = torch.load(args.ckpt, map_location="cpu")
     missing, unexpected = pipe.torch_layers.load_state_dict(sd, strict=False)
-    print(f"[eval] {os.path.basename(YAML)} <- {os.path.basename(CKPT)}: missing={len(missing)} unexpected={len(unexpected)}", flush=True)
+    print(f"[eval] {os.path.basename(args.config)} <- {os.path.basename(args.ckpt)}: missing={len(missing)} unexpected={len(unexpected)}", flush=True)
+    if (missing or unexpected) and not args.allow_partial:
+        raise SystemExit(
+            f"[eval] FATAL: checkpoint/config mismatch (missing={list(missing)[:4]}, "
+            f"unexpected={list(unexpected)[:4]}) — index-keyed checkpoints require the exact "
+            "nodes-list order they were saved under (--allow-partial to override)"
+        )
 
     norm, net = nodes["Norm"], nodes["DynUNet"]
-    ov = os.environ.get("EVAL_OVERLAP")
-    if ov is not None:
-        net.tile_overlap = float(ov)
-        if float(ov) == 0.0:
+    if args.overlap is not None:
+        net.tile_overlap = float(args.overlap)
+        if float(args.overlap) == 0.0:
             net.tile_gaussian = False  # no-op at overlap 0 (each pixel in exactly one tile)
         print(f"[eval] tile_overlap override -> {net.tile_overlap} (gaussian={net.tile_gaussian})", flush=True)
-    tb = os.environ.get("EVAL_TILE_BATCH")
-    if tb is not None:
-        net.tile_batch = int(tb)
+    if args.tile_batch is not None:
+        net.tile_batch = int(args.tile_batch)
         print(f"[eval] tile_batch override -> {net.tile_batch}", flush=True)
     norm._statistically_initialized = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -74,9 +97,9 @@ def main() -> None:
         n.eval()
     infer = Context(stage=ExecutionStage.INFERENCE, batch_idx=0, global_step=0)
 
-    rows = list(csv.DictReader(open(CSV)))
+    rows = list(csv.DictReader(open(args.splits_csv)))
     seen: set[str] = set()
-    test = [r["npz_path"] for r in rows if r["split"] == "test" and not (r["npz_path"] in seen or seen.add(r["npz_path"]))]
+    test = [r["npz_path"] for r in rows if r["split"] == args.split and not (r["npz_path"] in seen or seen.add(r["npz_path"]))]
 
     ious, dices = [], []
     maxprob, fgarea, labels = [], [], []

@@ -44,7 +44,8 @@ def main() -> None:
     ap.add_argument("--per-frame", type=int, default=4)
     ap.add_argument("--steps", type=int, default=60)
     ap.add_argument("--batch", type=int, default=4)
-    ap.add_argument("--out", default="/mnt/data/anish/cuvis-ai-unet/examples/lentils/out")
+    ap.add_argument("--npz-dir", required=True, help="directory of lentils .npz frames")
+    ap.add_argument("--out", default="./out")
     args = ap.parse_args()
 
     target_key = "mask" if args.target == "binary" else "class_mask"
@@ -53,7 +54,7 @@ def main() -> None:
     os.makedirs(args.out, exist_ok=True)
     print(f"target={args.target} mode={args.mode} classes={num_classes} device={device}")
 
-    train_files, val_files = split_labeled("/mnt/data/dev/lentils_npz", target_key, args.frames, 0.25)
+    train_files, val_files = split_labeled(args.npz_dir, target_key, args.frames, 0.25)
     print(f"labeled frames: train={len(train_files)} val={len(val_files)}")
     train_ds = LentilsPatchDataset(train_files, target_key, args.patch, args.per_frame, seed=0)
     val_ds = LentilsPatchDataset(val_files, target_key, args.patch, args.per_frame, seed=1)

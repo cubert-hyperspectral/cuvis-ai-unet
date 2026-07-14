@@ -16,11 +16,13 @@ measured once and reported separately. synchronize_cuda=True makes the profiler 
 each node.forward with a CUDA sync (accurate GPU wall-clock); skip_first_n discards
 warmup samples (cuDNN autotune / lazy alloc).
 
-Env: PROF_CONFIG / PROF_WEIGHTS (canonical artifact from convert_ckpt.py),
-PROF_FRAMES, PROF_SKIP, PROF_OVERLAPS.
+Point --pipeline at a canonical artifact (train.py output, or convert_ckpt.py for
+legacy raw checkpoints). ../lentils/profile.py is the front door with the same
+mechanics; this copy stays as the standalone diagnostic it originated as.
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 import time
@@ -33,15 +35,26 @@ from cuvis_ai_core.utils.node_registry import NodeRegistry
 from cuvis_ai_schemas.enums import ExecutionStage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UNET = "/mnt/data/anish/cuvis-ai-unet/plugins.yaml"
-AUG = os.path.join(HERE, "augment_local.yaml")
-CSV = os.path.join(HERE, "lentils_seg_splits_adaclip.csv")
-CONFIG = os.environ.get("PROF_CONFIG", "/mnt/data/dev/infer_2d.yaml")
-WEIGHTS = os.environ.get("PROF_WEIGHTS", "/mnt/data/dev/infer_2d.pt")
-FRAMES = int(os.environ.get("PROF_FRAMES", "8"))
-SKIP = int(os.environ.get("PROF_SKIP", "2"))
-OVERLAPS = [float(x) for x in os.environ.get("PROF_OVERLAPS", "0,0.25,0.5").split(",")]
-TILE_BATCHES = [int(x) for x in os.environ.get("PROF_TILE_BATCHES", "1").split(",")]
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+
+ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("--pipeline", required=True, help="canonical artifact YAML (save_to_file output)")
+ap.add_argument("--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)")
+ap.add_argument("--splits-csv", required=True)
+ap.add_argument("--frames", type=int, default=8)
+ap.add_argument("--skip", type=int, default=2)
+ap.add_argument("--overlaps", default="0,0.25,0.5")
+ap.add_argument("--tile-batches", default="1")
+ap.add_argument("--unet-manifest", default=os.path.join(REPO_ROOT, "plugins.yaml"))
+ap.add_argument("--augment-manifest",
+                default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml"))
+args = ap.parse_args()
+UNET, AUG, CSV = args.unet_manifest, args.augment_manifest, args.splits_csv
+CONFIG = args.pipeline
+WEIGHTS = args.weights or os.path.splitext(args.pipeline)[0] + ".pt"
+FRAMES, SKIP = args.frames, args.skip
+OVERLAPS = [float(x) for x in args.overlaps.split(",")]
+TILE_BATCHES = [int(x) for x in args.tile_batches.split(",")]
 
 
 def main() -> None:

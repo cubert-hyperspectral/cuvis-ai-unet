@@ -23,7 +23,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-NPZ_DIR = "/mnt/data/dev/lentils_npz"
+# Directory of per-frame .npz files; callers pass it explicitly (or set
+# LENTILS_NPZ_DIR when using the datamodule wrapper's default).
+NPZ_DIR = os.environ.get("LENTILS_NPZ_DIR", "./lentils_npz")
 
 
 def labeled_frames(npz_dir: str, target_key: str) -> list[str]:

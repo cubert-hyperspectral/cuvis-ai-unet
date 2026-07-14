@@ -27,13 +27,14 @@ from cuvis_ai_schemas.training.optimizer import OptimizerConfig
 from cuvis_ai_schemas.training.trainer import TrainerConfig
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UNET_MANIFEST = "/mnt/data/anish/cuvis-ai-unet/plugins.yaml"
-AUGMENT_MANIFEST = os.path.join(HERE, "augment_local.yaml")
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+UNET_MANIFEST = os.path.join(REPO_ROOT, "plugins.yaml")
+AUGMENT_MANIFEST = os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pipeline", default=os.path.join(HERE, "lentils_unet_npz_aug_zscore_perband.yaml"))
+    ap.add_argument("--pipeline", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
     ap.add_argument("--csv", default=os.path.join(HERE, "lentils_seg_splits.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "out", "saved_pipeline"))
     args = ap.parse_args()
