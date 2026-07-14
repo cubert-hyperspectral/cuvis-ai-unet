@@ -71,7 +71,10 @@ class LentilsPatchDataset(Dataset):
                 sd = cp.reshape(-1, c).std(0) + 1e-6
                 cp = (cp - mu) / sd
                 self.samples.append(
-                    (np.ascontiguousarray(cp, dtype=np.float32), np.ascontiguousarray(mp).astype(np.int64))
+                    (
+                        np.ascontiguousarray(cp, dtype=np.float32),
+                        np.ascontiguousarray(mp).astype(np.int64),
+                    )
                 )
 
     def __len__(self) -> int:
@@ -122,10 +125,15 @@ try:
 
         def build_stage_dataset(self, stage: str) -> Dataset:
             """Build the patch dataset for a Lightning stage."""
-            train, val = split_labeled(self.npz_dir, self.target_key, self.max_frames, self.val_frac)
+            train, val = split_labeled(
+                self.npz_dir, self.target_key, self.max_frames, self.val_frac
+            )
             is_train = stage in ("train", "fit")
             return LentilsPatchDataset(
-                train if is_train else val, self.target_key, self.patch, self.per_frame,
+                train if is_train else val,
+                self.target_key,
+                self.patch,
+                self.per_frame,
                 seed=0 if is_train else 1,
             )
 

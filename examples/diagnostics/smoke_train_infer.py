@@ -37,8 +37,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=["binary", "multiclass"], default="binary")
     ap.add_argument("--mode", choices=["2d", "2p5d", "3d"], default="2d")
-    ap.add_argument("--spectral-downsample", action="store_true",
-                    help="volumetric modes: also stride the spectral axis (exercises depth pad)")
+    ap.add_argument(
+        "--spectral-downsample",
+        action="store_true",
+        help="volumetric modes: also stride the spectral axis (exercises depth pad)",
+    )
     ap.add_argument("--patch", type=int, default=128)
     ap.add_argument("--frames", type=int, default=12)
     ap.add_argument("--per-frame", type=int, default=4)
@@ -58,14 +61,26 @@ def main() -> None:
     print(f"labeled frames: train={len(train_files)} val={len(val_files)}")
     train_ds = LentilsPatchDataset(train_files, target_key, args.patch, args.per_frame, seed=0)
     val_ds = LentilsPatchDataset(val_files, target_key, args.patch, args.per_frame, seed=1)
-    print(f"patches: train={len(train_ds)} val={len(val_ds)}, bands={train_ds.samples[0][0].shape[-1]}")
+    print(
+        f"patches: train={len(train_ds)} val={len(val_ds)}, bands={train_ds.samples[0][0].shape[-1]}"
+    )
 
-    loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch, shuffle=True, drop_last=True)
+    loader = torch.utils.data.DataLoader(
+        train_ds, batch_size=args.batch, shuffle=True, drop_last=True
+    )
     bands = train_ds.samples[0][0].shape[-1]
 
-    node = DynUNet(mode=args.mode, in_channels=bands, num_classes=num_classes,
-                   features=(16, 32, 64),
-                   spectral_downsample=args.spectral_downsample).to(device).train()
+    node = (
+        DynUNet(
+            mode=args.mode,
+            in_channels=bands,
+            num_classes=num_classes,
+            features=(16, 32, 64),
+            spectral_downsample=args.spectral_downsample,
+        )
+        .to(device)
+        .train()
+    )
     dice, ce = DiceLoss(), CrossEntropyLoss()
     opt = torch.optim.Adam(node.parameters(), lr=1e-3)
 
@@ -94,14 +109,20 @@ def main() -> None:
             ious.append(foreground_iou(pred, tgt))
             accs.append((pred == tgt).float().mean().item())
     mean_iou = float(torch.tensor([x for x in ious if x == x]).mean())
-    print(f"\nloss: {losses[0]:.4f} -> {losses[-1]:.4f}   val pixel-acc={sum(accs)/len(accs):.4f}   "
-          f"val fg-IoU={mean_iou:.4f}")
+    print(
+        f"\nloss: {losses[0]:.4f} -> {losses[-1]:.4f}   val pixel-acc={sum(accs) / len(accs):.4f}   "
+        f"val fg-IoU={mean_iou:.4f}"
+    )
 
     # overlay PNG on one val patch
-    _save_overlay(val_ds, node, device, os.path.join(args.out, f"overlay_{args.target}_{args.mode}.png"))
+    _save_overlay(
+        val_ds, node, device, os.path.join(args.out, f"overlay_{args.target}_{args.mode}.png")
+    )
 
     ok = losses[-1] < losses[0]
-    print("RESULT:", "TRAIN LOSS DECREASED — smoke PASS" if ok else "loss did not decrease — INSPECT")
+    print(
+        "RESULT:", "TRAIN LOSS DECREASED — smoke PASS" if ok else "loss did not decrease — INSPECT"
+    )
     sys.exit(0 if ok else 1)
 
 
@@ -126,9 +147,12 @@ def _save_overlay(val_ds, node, device, path) -> None:
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(1, 3, figsize=(12, 4))
-        ax[0].imshow(rgb); ax[0].set_title("false-RGB")
-        ax[1].imshow(gt, cmap="tab10", vmin=0, vmax=7); ax[1].set_title("ground truth")
-        ax[2].imshow(pred, cmap="tab10", vmin=0, vmax=7); ax[2].set_title("prediction")
+        ax[0].imshow(rgb)
+        ax[0].set_title("false-RGB")
+        ax[1].imshow(gt, cmap="tab10", vmin=0, vmax=7)
+        ax[1].set_title("ground truth")
+        ax[2].imshow(pred, cmap="tab10", vmin=0, vmax=7)
+        ax[2].set_title("prediction")
         for a in ax:
             a.axis("off")
         fig.tight_layout()

@@ -17,9 +17,10 @@ each node.forward with a CUDA sync (accurate GPU wall-clock); skip_first_n disca
 warmup samples (cuDNN autotune / lazy alloc).
 
 Point --pipeline at a canonical artifact (train.py output, or convert_ckpt.py for
-legacy raw checkpoints). ../lentils/profile.py is the front door with the same
+legacy raw checkpoints). ../lentils/profile_pipeline.py is the front door with the same
 mechanics; this copy stays as the standalone diagnostic it originated as.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,7 +30,6 @@ import time
 
 import numpy as np
 import torch
-
 from cuvis_ai_core.pipeline.pipeline import CuvisPipeline
 from cuvis_ai_core.utils.node_registry import NodeRegistry
 from cuvis_ai_schemas.enums import ExecutionStage
@@ -37,17 +37,22 @@ from cuvis_ai_schemas.enums import ExecutionStage
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
-ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap = argparse.ArgumentParser(
+    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+)
 ap.add_argument("--pipeline", required=True, help="canonical artifact YAML (save_to_file output)")
-ap.add_argument("--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)")
+ap.add_argument(
+    "--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)"
+)
 ap.add_argument("--splits-csv", required=True)
 ap.add_argument("--frames", type=int, default=8)
 ap.add_argument("--skip", type=int, default=2)
 ap.add_argument("--overlaps", default="0,0.25,0.5")
 ap.add_argument("--tile-batches", default="1")
 ap.add_argument("--unet-manifest", default=os.path.join(REPO_ROOT, "plugins.yaml"))
-ap.add_argument("--augment-manifest",
-                default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml"))
+ap.add_argument(
+    "--augment-manifest", default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml")
+)
 args = ap.parse_args()
 UNET, AUG, CSV = args.unet_manifest, args.augment_manifest, args.splits_csv
 CONFIG = args.pipeline
@@ -63,8 +68,11 @@ def main() -> None:
     reg.register_plugin(AUG)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pipe = CuvisPipeline.load_pipeline(
-        CONFIG, weights_path=WEIGHTS, device=device,
-        strict_weight_loading=False, node_registry=reg,
+        CONFIG,
+        weights_path=WEIGHTS,
+        device=device,
+        strict_weight_loading=False,
+        node_registry=reg,
     )
     nodes = {n.name: n for n in pipe.nodes}
     nodes["Norm"]._statistically_initialized = True
@@ -103,7 +111,10 @@ def main() -> None:
     )
 
     single = len(OVERLAPS) == 1 and len(TILE_BATCHES) == 1
-    print(f"\n{'overlap':>7} {'tile_batch':>10} {'DynUNet ms':>11} {'Norm ms':>8} {'fps':>6} {'peak GB':>8}", flush=True)
+    print(
+        f"\n{'overlap':>7} {'tile_batch':>10} {'DynUNet ms':>11} {'Norm ms':>8} {'fps':>6} {'peak GB':>8}",
+        flush=True,
+    )
     for ov in OVERLAPS:
         net.tile_overlap = ov
         for tb in TILE_BATCHES:
@@ -119,7 +130,10 @@ def main() -> None:
             peak = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0.0
             stats = {s.node_name: s for s in pipe.get_profiling_summary(ExecutionStage.INFERENCE)}
             dyn, nrm = stats["DynUNet"].mean_ms, stats["Norm"].mean_ms
-            print(f"{ov:>7.2f} {tb:>10d} {dyn:>11.1f} {nrm:>8.2f} {1e3 / (dyn + nrm):>6.2f} {peak:>8.2f}", flush=True)
+            print(
+                f"{ov:>7.2f} {tb:>10d} {dyn:>11.1f} {nrm:>8.2f} {1e3 / (dyn + nrm):>6.2f} {peak:>8.2f}",
+                flush=True,
+            )
             if single:  # full per-node table when profiling a single config
                 print(pipe.format_profiling_summary(total_frames=len(batches)), flush=True)
     print("[prof] DONE", flush=True)

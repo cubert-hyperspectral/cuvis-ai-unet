@@ -26,18 +26,29 @@ import _engine as eng
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     src = ap.add_mutually_exclusive_group(required=True)
     src.add_argument("--pipeline", help="artifact YAML from train.py (weights = co-located .pt)")
     src.add_argument("--config", help="legacy: pipeline config YAML for a raw checkpoint")
-    ap.add_argument("--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)")
+    ap.add_argument(
+        "--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)"
+    )
     ap.add_argument("--raw-ckpt", default=None, help="legacy: raw torch_layers state_dict .pt")
-    ap.add_argument("--allow-partial", action="store_true",
-                    help="legacy: tolerate missing/unexpected checkpoint keys (DANGEROUS)")
+    ap.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="legacy: tolerate missing/unexpected checkpoint keys (DANGEROUS)",
+    )
     ap.add_argument("--splits-csv", required=True)
     ap.add_argument("--split", default="test", choices=["train", "val", "test"])
-    ap.add_argument("--tile-overlap", type=float, default=None, help="override the artifact's overlap")
-    ap.add_argument("--tile-batch", type=int, default=None, help="override the artifact's tile batch")
+    ap.add_argument(
+        "--tile-overlap", type=float, default=None, help="override the artifact's overlap"
+    )
+    ap.add_argument(
+        "--tile-batch", type=int, default=None, help="override the artifact's tile batch"
+    )
     ap.add_argument("--max-frames", type=int, default=0, help="0 = all frames in the split")
     ap.add_argument("--device", default=None)
     ap.add_argument("--out", default=None, help="also write metrics JSON here")
@@ -52,8 +63,11 @@ def main() -> None:
         if not args.raw_ckpt:
             ap.error("--config requires --raw-ckpt")
         pipe = eng.load_raw_ckpt(
-            args.config, args.raw_ckpt,
-            device=args.device, registry=registry, allow_partial=args.allow_partial,
+            args.config,
+            args.raw_ckpt,
+            device=args.device,
+            registry=registry,
+            allow_partial=args.allow_partial,
         )
 
     m = eng.evaluate(
@@ -69,7 +83,10 @@ def main() -> None:
         f"{m['normal_frames']} normal",
         flush=True,
     )
-    print(f"[eval] SEGMENTATION (object frames): fg-IoU={m['fg_iou']:.4f}  fg-Dice={m['fg_dice']:.4f}", flush=True)
+    print(
+        f"[eval] SEGMENTATION (object frames): fg-IoU={m['fg_iou']:.4f}  fg-Dice={m['fg_dice']:.4f}",
+        flush=True,
+    )
     print(
         f"[eval] IMAGE-LEVEL AUROC: max-prob={m['image_auroc_maxprob']:.4f}  "
         f"pred-fg-area={m['image_auroc_area']:.4f}",

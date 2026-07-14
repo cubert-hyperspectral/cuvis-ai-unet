@@ -49,20 +49,29 @@ def main() -> None:
     ds = LentilsPatchDataset(train_files, "mask", args.tile, 4, seed=0)
     loader = torch.utils.data.DataLoader(ds, batch_size=4, shuffle=True, drop_last=True)
     bands = ds.samples[0][0].shape[-1]
-    node = DynUNet(mode="2d", in_channels=bands, num_classes=2, features=(16, 32, 64),
-                   tile_size=args.tile).to(device).train()
+    node = (
+        DynUNet(
+            mode="2d", in_channels=bands, num_classes=2, features=(16, 32, 64), tile_size=args.tile
+        )
+        .to(device)
+        .train()
+    )
     dice, ce = DiceLoss(), CrossEntropyLoss()
     opt = torch.optim.Adam(node.parameters(), lr=1e-3)
-    for step, batch in zip(range(args.steps), itertools.cycle(loader)):
+    for _step, batch in zip(range(args.steps), itertools.cycle(loader), strict=False):
         logits = node.forward(batch["data"].to(device))["logits"]
-        loss = (dice.forward(logits, batch["targets"].to(device))["loss"]
-                + ce.forward(logits, batch["targets"].to(device))["loss"])
-        opt.zero_grad(); loss.backward(); opt.step()
+        loss = (
+            dice.forward(logits, batch["targets"].to(device))["loss"]
+            + ce.forward(logits, batch["targets"].to(device))["loss"]
+        )
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
     print(f"trained {args.steps} steps on {len(ds)} patches ({bands} bands)")
     node.eval()
 
     # ---- hard gate: input == tile => tiled path equivalent to direct forward
-    sample = ds[0]["data"].unsqueeze(0).to(device)          # [1, tile, tile, C]
+    sample = ds[0]["data"].unsqueeze(0).to(device)  # [1, tile, tile, C]
     x_nchw = sample.permute(0, 3, 1, 2).contiguous()
     with torch.no_grad():
         direct_t = node.net(x_nchw)
@@ -81,13 +90,13 @@ def main() -> None:
     sd = cube.reshape(-1, cube.shape[-1]).std(0) + 1e-6
     cube = (cube - mu) / sd
     mask = torch.from_numpy(np.asarray(z["mask"]).astype(np.int64))
-    x = torch.from_numpy(cube).unsqueeze(0).to(device)      # [1, H, W, C] BHWC
+    x = torch.from_numpy(cube).unsqueeze(0).to(device)  # [1, H, W, C] BHWC
 
     x_nchw = x.permute(0, 3, 1, 2).contiguous()
     with torch.no_grad():
         xp, revert = pad_hw_to_multiple(x_nchw, node.net.spatial_grid)
-        single = node.net(xp)[revert]                        # (a) one full-frame pass
-    tiled_bhwc = node.forward(x)["logits"]                   # (b) eval+oversize -> tiled
+        single = node.net(xp)[revert]  # (a) one full-frame pass
+    tiled_bhwc = node.forward(x)["logits"]  # (b) eval+oversize -> tiled
     tiled = tiled_bhwc.permute(0, 3, 1, 2)
 
     mae = (single - tiled).abs().mean().item()

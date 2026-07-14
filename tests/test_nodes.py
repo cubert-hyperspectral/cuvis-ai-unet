@@ -57,8 +57,12 @@ def test_hparams_and_state_dict_reload_with_tiling() -> None:
     assert hp["tile_overlap"] == 0.25
     assert hp["tile_gaussian"] is False
     n2 = DynUNet(
-        mode=hp["mode"], in_channels=hp["in_channels"], num_classes=hp["num_classes"],
-        features=hp["features"], tile_size=hp["tile_size"], tile_overlap=hp["tile_overlap"],
+        mode=hp["mode"],
+        in_channels=hp["in_channels"],
+        num_classes=hp["num_classes"],
+        features=hp["features"],
+        tile_size=hp["tile_size"],
+        tile_overlap=hp["tile_overlap"],
         tile_gaussian=hp["tile_gaussian"],
     ).eval()
     n2.load_state_dict(n1.state_dict())
@@ -98,19 +102,22 @@ def test_stage_gating(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_tile_validation_errors() -> None:
     with pytest.raises(ValueError, match="divisible"):
         # 3-stage net -> grid (4, 4); 18 % 4 != 0
-        DynUNet(mode="2d", in_channels=BANDS, num_classes=2, features=(8, 16, 32),
-                tile_size=(18, 16))
+        DynUNet(
+            mode="2d", in_channels=BANDS, num_classes=2, features=(8, 16, 32), tile_size=(18, 16)
+        )
     with pytest.raises(ValueError, match="tile_overlap"):
         _node("2d", tile_size=(16, 16), tile_overlap=1.0)
 
 
 def test_bottleneck_and_depth_warnings() -> None:
     with pytest.warns(UserWarning, match="InstanceNorm"):
-        DynUNet(mode="2d", in_channels=BANDS, num_classes=2, features=(8, 16, 32),
-                tile_size=(8, 8))  # 8 / grid 4 = 2 < 4
+        DynUNet(
+            mode="2d", in_channels=BANDS, num_classes=2, features=(8, 16, 32), tile_size=(8, 8)
+        )  # 8 / grid 4 = 2 < 4
     with pytest.warns(UserWarning, match="spectral stride grid"):
-        DynUNet(mode="3d", in_channels=3, num_classes=2, features=(8, 16, 32),
-                spectral_downsample=True)  # depth grid 4 > 3 bands
+        DynUNet(
+            mode="3d", in_channels=3, num_classes=2, features=(8, 16, 32), spectral_downsample=True
+        )  # depth grid 4 > 3 bands
 
 
 @pytest.mark.parametrize("loss_cls", [DiceLoss, CrossEntropyLoss])

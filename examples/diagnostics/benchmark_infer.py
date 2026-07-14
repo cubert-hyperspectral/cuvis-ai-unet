@@ -4,6 +4,7 @@ Times the exact tiled-predict path (cuvis_ai_unet.tiling.sliding_window_inferenc
 on one real lentils frame, for 3D@128 and 2D@128 with the deep [32..512] net.
 CPU is timed on a small region (tractable) and extrapolated per-tile; GPU is timed
 on the full frame. Weights are untrained — timing is weight-independent."""
+
 import argparse
 import glob
 import time
@@ -24,13 +25,15 @@ TILE = 128
 
 
 def backbone(mode):
-    return (
-        DynUNet(
-            mode=mode, in_channels=61, num_classes=2, features=[32, 64, 128, 256, 512],
-            tile_size=128, tile_overlap=0.5, tile_gaussian=True,
-        )
-        .net.eval()
-    )
+    return DynUNet(
+        mode=mode,
+        in_channels=61,
+        num_classes=2,
+        features=[32, 64, 128, 256, 512],
+        tile_size=128,
+        tile_overlap=0.5,
+        tile_gaussian=True,
+    ).net.eval()
 
 
 def ntiles(h, w):
@@ -59,9 +62,18 @@ for mode in ["3d", "2d"]:
     print(f"=== DynUNet {mode} @128, deep [32..512] ===", flush=True)
     dt, nt = run(mode, "cpu", False, 256, 256)
     per = dt / nt
-    print(f"  CPU  fp32     : {per*1000:7.0f} ms/tile  -> full frame ~{per*full:7.1f} s", flush=True)
+    print(
+        f"  CPU  fp32     : {per * 1000:7.0f} ms/tile  -> full frame ~{per * full:7.1f} s",
+        flush=True,
+    )
     if cuda:
         dt, nt = run(mode, "cuda", False, Hf, Wf)
-        print(f"  GPU  fp32     : {dt/nt*1000:7.1f} ms/tile  -> full frame  {dt:7.2f} s", flush=True)
+        print(
+            f"  GPU  fp32     : {dt / nt * 1000:7.1f} ms/tile  -> full frame  {dt:7.2f} s",
+            flush=True,
+        )
         dt, nt = run(mode, "cuda", True, Hf, Wf)
-        print(f"  GPU  autocast : {dt/nt*1000:7.1f} ms/tile  -> full frame  {dt:7.2f} s", flush=True)
+        print(
+            f"  GPU  autocast : {dt / nt * 1000:7.1f} ms/tile  -> full frame  {dt:7.2f} s",
+            flush=True,
+        )

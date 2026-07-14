@@ -13,11 +13,10 @@ from typing import Any
 
 import torch
 import torch.nn.functional as F
+from cuvis_ai_core.node.node import Node
 from cuvis_ai_schemas.enums import ExecutionStage, NodeCategory, NodeTag
 from cuvis_ai_schemas.pipeline import PortSpec
 from torch import Tensor
-
-from cuvis_ai_core.node.node import Node
 
 from cuvis_ai_unet.functional import soft_dice_loss, to_bchw_targets
 

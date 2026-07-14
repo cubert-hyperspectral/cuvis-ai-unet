@@ -15,12 +15,11 @@ import argparse
 import os
 
 import torch
-from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
-
 from cuvis_ai_core.pipeline.factory import PipelineBuilder
 from cuvis_ai_core.pipeline.pipeline import CuvisPipeline
 from cuvis_ai_core.training import GradientTrainer, StatisticalTrainer
 from cuvis_ai_core.utils.node_registry import NodeRegistry
+from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
 from cuvis_ai_schemas.enums import ExecutionStage
 from cuvis_ai_schemas.execution import Context
 from cuvis_ai_schemas.training.optimizer import OptimizerConfig
@@ -34,7 +33,9 @@ AUGMENT_MANIFEST = os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml"
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pipeline", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
+    ap.add_argument(
+        "--pipeline", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml")
+    )
     ap.add_argument("--csv", default=os.path.join(HERE, "lentils_seg_splits.csv"))
     ap.add_argument("--out", default=os.path.join(HERE, "out", "saved_pipeline"))
     args = ap.parse_args()
@@ -48,11 +49,17 @@ def main() -> None:
     StatisticalTrainer(pipeline=pipeline, datamodule=dm).fit()
     pipeline.unfreeze_nodes_by_name(["DynUNet"])
     GradientTrainer(
-        pipeline=pipeline, datamodule=dm,
+        pipeline=pipeline,
+        datamodule=dm,
         loss_nodes=[n for n in pipeline.nodes if n.name in ("DiceLoss", "CrossEntropyLoss")],
         trainer_config=TrainerConfig(
-            max_epochs=1, accelerator="auto", devices=1, enable_progress_bar=False,
-            log_every_n_steps=1, enable_checkpointing=False, check_val_every_n_epoch=10,
+            max_epochs=1,
+            accelerator="auto",
+            devices=1,
+            enable_progress_bar=False,
+            log_every_n_steps=1,
+            enable_checkpointing=False,
+            check_val_every_n_epoch=10,
         ),
         optimizer_config=OptimizerConfig(name="adam", lr=1e-3),
     ).fit()
@@ -82,8 +89,10 @@ def main() -> None:
     print(f"reloaded tiled logits identical: {identical}  (max diff {max_diff:.2e})")
     # Also confirm the tiling hparams survived the yaml round-trip.
     node = {n.name: n for n in reloaded.nodes}["DynUNet"]
-    print(f"reloaded tile config: tile_size={node.tile_size} overlap={node.tile_overlap} "
-          f"gaussian={node.tile_gaussian}")
+    print(
+        f"reloaded tile config: tile_size={node.tile_size} overlap={node.tile_overlap} "
+        f"gaussian={node.tile_gaussian}"
+    )
     assert identical, "save->reload round-trip produced different logits"
     assert tuple(node.tile_size) == (128, 128)
     print("RESULT: SAVE->RELOAD ROUND-TRIP PASS")

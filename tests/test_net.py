@@ -27,7 +27,10 @@ def test_forward_shape_and_grad_divisible(mode: str, spectral_downsample: bool) 
     # exercise the internal depth pad (15 -> 16 for depth grid 4) for free.
     b, bands, h, w, k = 2, 15, 48, 40, 4
     net = DynUNetBackbone(
-        mode, in_channels=bands, out_channels=k, features=(16, 32, 64),
+        mode,
+        in_channels=bands,
+        out_channels=k,
+        features=(16, 32, 64),
         spectral_downsample=spectral_downsample,
     )
     x = torch.randn(b, bands, h, w)
@@ -58,7 +61,7 @@ def test_depth_pad_internal() -> None:
 
 
 def test_2p5d_matches_3d_param_count() -> None:
-    kw = dict(in_channels=16, out_channels=4, features=(16, 32, 64))
+    kw = {"in_channels": 16, "out_channels": 4, "features": (16, 32, 64)}
     p_2p5d = _count(DynUNetBackbone("2p5d", **kw))
     p_3d = _count(DynUNetBackbone("3d", **kw))
     # R(2+1)D is designed to param-match the full 3-D net.
@@ -68,7 +71,10 @@ def test_2p5d_matches_3d_param_count() -> None:
 def test_explicit_per_axis_strides_roundtrip() -> None:
     # Lists (as a YAML round-trip would produce) must be accepted like tuples.
     net = DynUNetBackbone(
-        "3d", in_channels=15, out_channels=4, features=(16, 32, 64),
+        "3d",
+        in_channels=15,
+        out_channels=4,
+        features=(16, 32, 64),
         strides=[1, [1, 2, 2], [2, 2, 2]],
     )
     assert net.spatial_grid == (4, 4)

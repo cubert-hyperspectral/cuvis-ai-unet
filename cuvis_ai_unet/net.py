@@ -108,7 +108,9 @@ class DynUNetBackbone(nn.Module):
         self.upconvs = nn.ModuleList()
         self.decoder = nn.ModuleList()
         for i in range(n - 1, 0, -1):
-            self.upconvs.append(make_upconv(mode, features[i], features[i - 1], self.stage_strides[i]))
+            self.upconvs.append(
+                make_upconv(mode, features[i], features[i - 1], self.stage_strides[i])
+            )
             self.decoder.append(
                 DoubleConvBlock(mode, features[i - 1] * 2, features[i - 1], kernel_size, 1, skip)
             )

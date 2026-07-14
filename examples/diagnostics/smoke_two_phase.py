@@ -62,7 +62,9 @@ def fg_iou(pred: torch.Tensor, target: torch.Tensor) -> float:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pipeline", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
+    ap.add_argument(
+        "--pipeline", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml")
+    )
     ap.add_argument("--csv", default=os.path.join(HERE, "lentils_seg_splits.csv"))
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--batch", type=int, default=4)
@@ -93,11 +95,15 @@ def main() -> None:
         assert getattr(n, "_statistically_initialized", False), f"{n.name} not initialized"
     norm = nodes["Norm"]
     if hasattr(norm, "zscore_mean"):
-        print(f"Phase 1 OK: zscore mean|std norms = "
-              f"{norm.zscore_mean.norm():.3f} | {norm.zscore_std.norm():.3f}")
+        print(
+            f"Phase 1 OK: zscore mean|std norms = "
+            f"{norm.zscore_mean.norm():.3f} | {norm.zscore_std.norm():.3f}"
+        )
     elif hasattr(norm, "running_min"):
-        print(f"Phase 1 OK: minmax running_min/max = "
-              f"{float(norm.running_min):.4f} / {float(norm.running_max):.4f}")
+        print(
+            f"Phase 1 OK: minmax running_min/max = "
+            f"{float(norm.running_min):.4f} / {float(norm.running_max):.4f}"
+        )
 
     # ---- Phase 2: gradient training of DynUNet only
     pipeline.unfreeze_nodes_by_name(["DynUNet"])
@@ -106,8 +112,12 @@ def main() -> None:
         datamodule=dm,
         loss_nodes=[nodes["DiceLoss"], nodes["CrossEntropyLoss"]],
         trainer_config=TrainerConfig(
-            max_epochs=args.epochs, accelerator="auto", devices=1,
-            enable_progress_bar=False, log_every_n_steps=1, enable_checkpointing=False,
+            max_epochs=args.epochs,
+            accelerator="auto",
+            devices=1,
+            enable_progress_bar=False,
+            log_every_n_steps=1,
+            enable_checkpointing=False,
             check_val_every_n_epoch=args.val_every,  # tiled full-frame val is expensive
         ),
         optimizer_config=OptimizerConfig(name="adam", lr=1e-3),

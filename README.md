@@ -128,7 +128,7 @@ rely on:
 - `cuvis_ai_unet/node/dynunet.py` — the `DynUNet` cuvis-ai node (BHWC port wrapper).
 - `cuvis_ai_unet/node/losses.py` — `DiceLoss` and `CrossEntropyLoss` loss nodes.
 - `cuvis_ai_unet/transforms.py` — vendored `RandomForegroundBiasedCrop` (leaves once upstream ships).
-- `examples/lentils/` — shared engine + `train.py` / `evaluate.py` / `profile.py` / `gen_splits.py`.
+- `examples/lentils/` — shared engine + `train.py` / `evaluate.py` / `profile_pipeline.py` / `gen_splits.py`.
 - `examples/diagnostics/` — development-era diagnostic scripts (kept runnable, see its README).
 - `notebooks/lentils_segmentation/` — train + inference tutorials on the public lentils dataset.
 - `plugins.yaml` — plugin manifest.

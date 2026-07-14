@@ -16,9 +16,13 @@ import _engine as eng
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--pipeline", required=True, help="artifact YAML from train.py")
-    ap.add_argument("--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)")
+    ap.add_argument(
+        "--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)"
+    )
     ap.add_argument("--splits-csv", required=True)
     ap.add_argument("--split", default="test", choices=["train", "val", "test"])
     ap.add_argument("--frames", type=int, default=8)

@@ -28,11 +28,10 @@ from collections.abc import Sequence
 from typing import Any
 
 import torch
+from cuvis_ai_core.node.node import Node
 from cuvis_ai_schemas.enums import ExecutionStage, NodeCategory, NodeTag
 from cuvis_ai_schemas.execution import Context
 from cuvis_ai_schemas.pipeline import PortSpec
-
-from cuvis_ai_core.node.node import Node
 
 from cuvis_ai_unet.blocks import Mode, SkipKind
 from cuvis_ai_unet.net import DynUNetBackbone

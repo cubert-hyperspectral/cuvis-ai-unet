@@ -12,7 +12,7 @@ Quick CPU wiring smoke::
 
 The splits CSV comes from ``gen_splits.py`` (train-row repetition there is the
 patches-per-frame multiplicity). Evaluate the saved artifact with
-``evaluate.py``; profile it with ``profile.py``.
+``evaluate.py``; profile it with ``profile_pipeline.py``.
 """
 
 from __future__ import annotations
@@ -24,28 +24,44 @@ import _engine as eng
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--splits-csv", required=True, help="splits CSV from gen_splits.py")
-    ap.add_argument("--out", required=True, help="output dir for the artifact (pipeline.yaml + .pt + run.json)")
+    ap.add_argument(
+        "--out", required=True, help="output dir for the artifact (pipeline.yaml + .pt + run.json)"
+    )
     ap.add_argument("--mode", default="2d", choices=["2d", "2p5d", "3d"])
     ap.add_argument("--patch", type=int, default=128, help="training crop and inference tile size")
     ap.add_argument("--features", type=int, nargs="+", default=[32, 64, 128, 256, 512])
     ap.add_argument("--in-channels", type=int, default=61)
     ap.add_argument("--num-classes", type=int, default=2)
-    ap.add_argument("--normalizer", default="zscore", choices=["zscore", "zscore-perband", "persample"])
+    ap.add_argument(
+        "--normalizer", default="zscore", choices=["zscore", "zscore-perband", "persample"]
+    )
     ap.add_argument("--max-init-frames", type=int, default=100)
-    ap.add_argument("--fg-percent", type=float, default=0.5, help="foreground-biased crop probability")
+    ap.add_argument(
+        "--fg-percent", type=float, default=0.5, help="foreground-biased crop probability"
+    )
     ap.add_argument("--dice-weight", type=float, default=1.0)
     ap.add_argument("--ce-weight", type=float, default=1.0)
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--num-workers", type=int, default=4)
-    ap.add_argument("--samples-per-frame", type=int, default=None,
-                    help="N crops per frame per epoch via the dataloader (needs a dataloader "
-                         "release with base-module support; otherwise use gen_splits.py --repeat)")
-    ap.add_argument("--val-every", type=int, default=0,
-                    help="validate every N epochs (0 = no in-training validation)")
+    ap.add_argument(
+        "--samples-per-frame",
+        type=int,
+        default=None,
+        help="N crops per frame per epoch via the dataloader (needs a dataloader "
+        "release with base-module support; otherwise use gen_splits.py --repeat)",
+    )
+    ap.add_argument(
+        "--val-every",
+        type=int,
+        default=0,
+        help="validate every N epochs (0 = no in-training validation)",
+    )
     ap.add_argument("--tile-overlap", type=float, default=0.5)
     ap.add_argument("--tile-batch", type=int, default=16)
     ap.add_argument("--accelerator", default="auto")

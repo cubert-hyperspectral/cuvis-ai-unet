@@ -4,6 +4,7 @@ max/mean foreground softmax prob, and pixel counts over thresholds — for BOTH 
 tiled path and a direct full-frame forward. Distinguishes soft-prob-never-crosses-0.5
 (imbalance/threshold) from per-tile InstanceNorm washing foreground out (tiled fails,
 direct succeeds)."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,11 +12,10 @@ import os
 
 import torch
 import torch.nn.functional as F
-from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
-
 from cuvis_ai_core.pipeline.factory import PipelineBuilder
 from cuvis_ai_core.training import GradientTrainer, StatisticalTrainer
 from cuvis_ai_core.utils.node_registry import NodeRegistry
+from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
 from cuvis_ai_schemas.enums import ExecutionStage
 from cuvis_ai_schemas.execution import Context
 from cuvis_ai_schemas.training.optimizer import OptimizerConfig
@@ -24,7 +24,9 @@ from cuvis_ai_schemas.training.trainer import TrainerConfig
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
-ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap = argparse.ArgumentParser(
+    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+)
 ap.add_argument("--splits-csv", required=True)
 ap.add_argument("--ckpt-out", required=True, help="where to save the raw torch_layers state_dict")
 ap.add_argument("--config", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
@@ -33,8 +35,9 @@ ap.add_argument("--num-workers", type=int, default=4)
 ap.add_argument("--batch", type=int, default=8, help="3D@128 needs 4 (batch 8 OOMs the GPU)")
 ap.add_argument("--no-val", action="store_true", help="disable the trainer's full-frame validation")
 ap.add_argument("--unet-manifest", default=os.path.join(REPO_ROOT, "plugins.yaml"))
-ap.add_argument("--augment-manifest",
-                default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml"))
+ap.add_argument(
+    "--augment-manifest", default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml")
+)
 args = ap.parse_args()
 UNET, AUG = args.unet_manifest, args.augment_manifest
 CSV, YAML, CKPT = args.splits_csv, args.config, args.ckpt_out
@@ -72,17 +75,29 @@ def main() -> None:
                 raise IndexError
 
         dm.val_dataloader = lambda *a, **k: DataLoader(_EmptyDS())  # type: ignore[method-assign]
-        print("[diag] trainer validation disabled via empty loader (metrics via eval_ckpt.py)", flush=True)
+        print(
+            "[diag] trainer validation disabled via empty loader (metrics via eval_ckpt.py)",
+            flush=True,
+        )
 
-    print(f"[diag] {os.path.basename(YAML)} | Phase 1 stat-init + Phase 2 train ({EPOCHS} epochs, nw={NW})", flush=True)
+    print(
+        f"[diag] {os.path.basename(YAML)} | Phase 1 stat-init + Phase 2 train ({EPOCHS} epochs, nw={NW})",
+        flush=True,
+    )
     StatisticalTrainer(pipeline=pipe, datamodule=dm).fit()
     pipe.unfreeze_nodes_by_name(["DynUNet"])
     GradientTrainer(
-        pipeline=pipe, datamodule=dm,
+        pipeline=pipe,
+        datamodule=dm,
         loss_nodes=[nodes["DiceLoss"], nodes["CrossEntropyLoss"]],
         trainer_config=TrainerConfig(
-            max_epochs=EPOCHS, accelerator="auto", devices=1, enable_progress_bar=False,
-            log_every_n_steps=1, enable_checkpointing=False, check_val_every_n_epoch=EPOCHS,
+            max_epochs=EPOCHS,
+            accelerator="auto",
+            devices=1,
+            enable_progress_bar=False,
+            log_every_n_steps=1,
+            enable_checkpointing=False,
+            check_val_every_n_epoch=EPOCHS,
         ),
         optimizer_config=OptimizerConfig(name="adam", lr=1e-3),
     ).fit()

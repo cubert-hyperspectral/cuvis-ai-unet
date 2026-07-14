@@ -18,7 +18,7 @@ def test_offsets_first_zero_last_flush_even() -> None:
     o = compute_tile_offsets(1000, 128, overlap=0.5)
     assert o[0] == 0 and o[-1] == 1000 - 128
     assert o == sorted(o)
-    diffs = [b - a for a, b in zip(o, o[1:])]
+    diffs = [b - a for a, b in zip(o, o[1:], strict=False)]
     assert max(diffs) - min(diffs) <= 1  # evenly spread (integer rounding)
 
 

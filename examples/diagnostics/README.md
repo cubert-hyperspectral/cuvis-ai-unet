@@ -2,7 +2,7 @@
 
 Development-era scripts kept runnable for reproducing and extending the findings
 behind the published lentils numbers. The **front door** for normal use is
-`../lentils/` (`train.py` / `evaluate.py` / `profile.py`); everything here takes
+`../lentils/` (`train.py` / `evaluate.py` / `profile_pipeline.py`); everything here takes
 explicit arguments (`--splits-csv`, `--ckpt`, `--npz-dir`, ...) and defaults its
 plugin manifests to the repo's own `plugins.yaml` + `../lentils/augment.yaml`.
 

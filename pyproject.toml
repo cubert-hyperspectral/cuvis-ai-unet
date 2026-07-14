@@ -39,6 +39,7 @@ dependencies = [
   "cuvis-ai-core>=0.10.0",
   "cuvis-ai-schemas>=0.7.0",
   "torch>=2.1",
+  "torchvision",  # transitively required (cuvis-ai-core); declared so its cu128 source override binds
 ]
 # cuvis-ai-augment is intentionally NOT a dependency: only the vendored
 # transforms module touches it, and that module is imported exclusively through
@@ -87,6 +88,9 @@ fallback_version = "0.1.0"
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
+# torchvision MUST come from the same cu128 index as torch, or the prebuilt ops
+# (torchvision::nms) mismatch torch's ABI at import.
+torchvision = { index = "pytorch-cu128" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
@@ -114,7 +118,7 @@ extend-select = ["ANN201", "ANN202", "ANN204"]
 # Non-library code (tests, examples, tutorial helpers): return-type annotations and compact
 # multi-statement setup lines are readability noise here, not defects.
 "tests/**" = ["ANN201", "ANN202", "ANN204", "E501", "E702"]
-"examples/**" = ["ANN201", "ANN202", "E702", "E501"]
+"examples/**" = ["ANN201", "ANN202", "ANN204", "E702", "E501", "E402"]
 "notebooks/**" = ["ANN201", "ANN202", "E702", "E501", "B905", "E402"]
 
 [tool.mypy]

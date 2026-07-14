@@ -4,7 +4,7 @@ Builds the pipeline in code (the cuvis-ai plugin-family convention), trains it i
 two phases (normalizer statistics, then gradient training of DynUNet), and
 persists/restores the canonical artifact written by ``pipeline.save_to_file``
 (YAML + co-located ``.pt``). The thin CLIs (`train.py`, `evaluate.py`,
-`profile.py`) are argparse fronts over these functions.
+`profile_pipeline.py`) are argparse fronts over these functions.
 
 Graph (wired here, serialized into every artifact)::
 
@@ -159,14 +159,14 @@ def build_graph(
 
     pipe = CuvisPipeline(name)
     pipe.connect(
-        (source.outputs.cube, norm.data),
-        (norm.outputs.normalized, augment.cube),
-        (source.outputs.mask, augment.mask),
-        (augment.outputs.cube, net.data),
-        (net.outputs.logits, dice.logits),
-        (augment.outputs.mask, dice.targets),
-        (net.outputs.logits, ce.logits),
-        (augment.outputs.mask, ce.targets),
+        (source.outputs.cube, norm.inputs.data),
+        (norm.outputs.normalized, augment.inputs.cube),
+        (source.outputs.mask, augment.inputs.mask),
+        (augment.outputs.cube, net.inputs.data),
+        (net.outputs.logits, dice.inputs.logits),
+        (augment.outputs.mask, dice.inputs.targets),
+        (net.outputs.logits, ce.inputs.logits),
+        (augment.outputs.mask, ce.inputs.targets),
     )
     return pipe
 
@@ -225,7 +225,9 @@ def _git_commit() -> str | None:
     try:
         out = subprocess.run(
             ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         return out.stdout.strip() or None
     except OSError:
@@ -539,7 +541,9 @@ def profile(
                 for b in batches:
                     pipeline.forward(batch=b, stage=ExecutionStage.INFERENCE)
             peak = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0.0
-            stats = {s.node_name: s for s in pipeline.get_profiling_summary(ExecutionStage.INFERENCE)}
+            stats = {
+                s.node_name: s for s in pipeline.get_profiling_summary(ExecutionStage.INFERENCE)
+            }
             dyn, nrm = stats["DynUNet"].mean_ms, stats["Norm"].mean_ms
             print(
                 f"{ov:>7.2f} {tb:>10d} {dyn:>11.1f} {nrm:>8.2f} "

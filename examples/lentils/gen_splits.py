@@ -28,14 +28,30 @@ import numpy as np
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--npz-dir", required=True, help="directory of per-frame .npz files (cube + mask)")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--npz-dir", required=True, help="directory of per-frame .npz files (cube + mask)"
+    )
     ap.add_argument("--out", required=True, help="output CSV path (split,npz_path,image_id)")
-    ap.add_argument("--scheme", default="stratified-all", choices=["stratified-all", "labeled-only"])
-    ap.add_argument("--fracs", type=float, nargs=2, default=[0.6, 0.2], metavar=("TRAIN", "VAL"),
-                    help="train/val fractions; the remainder is test")
-    ap.add_argument("--repeat", type=int, default=4,
-                    help="duplicate each TRAIN row N times (N independent crops per frame per epoch)")
+    ap.add_argument(
+        "--scheme", default="stratified-all", choices=["stratified-all", "labeled-only"]
+    )
+    ap.add_argument(
+        "--fracs",
+        type=float,
+        nargs=2,
+        default=[0.6, 0.2],
+        metavar=("TRAIN", "VAL"),
+        help="train/val fractions; the remainder is test",
+    )
+    ap.add_argument(
+        "--repeat",
+        type=int,
+        default=4,
+        help="duplicate each TRAIN row N times (N independent crops per frame per epoch)",
+    )
     ap.add_argument("--max-frames", type=int, default=0, help="0 = all frames")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()

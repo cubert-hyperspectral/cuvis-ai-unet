@@ -18,6 +18,7 @@ Same argument contract as eval_ckpt.py: point --config / --ckpt at the 2D or the
 3D checkpoint and run once per model. Superseded by prof_pipeline.py (built-in
 per-node profiler); kept because it validated those numbers independently.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,17 +28,19 @@ import time
 
 import numpy as np
 import torch
-
 from cuvis_ai_core.pipeline.factory import PipelineBuilder
 from cuvis_ai_core.utils.node_registry import NodeRegistry
 from cuvis_ai_schemas.enums import ExecutionStage
 from cuvis_ai_schemas.execution import Context
+
 from cuvis_ai_unet.tiling import compute_tile_offsets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 
-ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+ap = argparse.ArgumentParser(
+    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+)
 ap.add_argument("--ckpt", required=True, help="raw torch_layers.state_dict() .pt")
 ap.add_argument("--splits-csv", required=True)
 ap.add_argument("--config", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
@@ -45,8 +48,9 @@ ap.add_argument("--frames", type=int, default=8)
 ap.add_argument("--warmup", type=int, default=2)
 ap.add_argument("--overlaps", default="0,0.25,0.5")
 ap.add_argument("--unet-manifest", default=os.path.join(REPO_ROOT, "plugins.yaml"))
-ap.add_argument("--augment-manifest",
-                default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml"))
+ap.add_argument(
+    "--augment-manifest", default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml")
+)
 args = ap.parse_args()
 UNET, AUG, CSV = args.unet_manifest, args.augment_manifest, args.splits_csv
 YAML, CKPT = args.config, args.ckpt
@@ -149,7 +153,9 @@ def main() -> None:
         tn, tu = np.array(tn), np.array(tu)
         tot = tn + tu
         peak = torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0.0
-        results.append((ov, tpf, tn.mean(), tu.mean(), tot.mean(), tot.std(), 1e3 / tot.mean(), peak))
+        results.append(
+            (ov, tpf, tn.mean(), tu.mean(), tot.mean(), tot.std(), 1e3 / tot.mean(), peak)
+        )
         print(
             f"{ov:>7.2f} {tpf:>8d} {tn.mean():>9.2f} {tu.mean():>9.1f} "
             f"{tot.mean():>9.1f} {tot.std():>7.1f} {1e3 / tot.mean():>6.2f} {peak:>8.2f}",
@@ -160,7 +166,10 @@ def main() -> None:
     base = next((r for r in results if r[0] == 0.0), results[0])
     print(f"\n[prof] relative to overlap={base[0]:.2f} (UNet compute):", flush=True)
     for ov, tpf, _, tu, *_ in results:
-        print(f"  overlap {ov:.2f}: {tu / base[3]:.2f}x time  ({tpf / base[1]:.2f}x tiles)", flush=True)
+        print(
+            f"  overlap {ov:.2f}: {tu / base[3]:.2f}x time  ({tpf / base[1]:.2f}x tiles)",
+            flush=True,
+        )
     print("[prof] DONE", flush=True)
 
 

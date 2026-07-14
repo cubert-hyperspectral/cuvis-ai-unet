@@ -15,12 +15,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule  # noqa: E402
-
 from cuvis_ai_core.pipeline.factory import PipelineBuilder  # noqa: E402
 from cuvis_ai_core.training import GradientTrainer  # noqa: E402
 from cuvis_ai_core.training.predictor import Predictor  # noqa: E402
 from cuvis_ai_core.utils.node_registry import NodeRegistry  # noqa: E402
+from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule  # noqa: E402
 from cuvis_ai_schemas.training.optimizer import OptimizerConfig  # noqa: E402
 from cuvis_ai_schemas.training.trainer import TrainerConfig  # noqa: E402
 
@@ -35,7 +34,9 @@ def main() -> None:
     args = ap.parse_args()
 
     # Only our plugin needs registering; CU3SDataNode is a built-in cuvis-ai node.
-    NodeRegistry().register_plugin(os.path.join(os.path.dirname(os.path.dirname(HERE)), "plugins.yaml"))
+    NodeRegistry().register_plugin(
+        os.path.join(os.path.dirname(os.path.dirname(HERE)), "plugins.yaml")
+    )
 
     pipeline = PipelineBuilder().build_from_config(args.pipeline)
     print("pipeline nodes:", [n.name for n in pipeline.nodes])
@@ -50,8 +51,12 @@ def main() -> None:
         datamodule=dm,
         loss_nodes=loss_nodes,
         trainer_config=TrainerConfig(
-            max_epochs=args.epochs, accelerator="auto", devices=1,
-            enable_progress_bar=False, log_every_n_steps=5, enable_checkpointing=False,
+            max_epochs=args.epochs,
+            accelerator="auto",
+            devices=1,
+            enable_progress_bar=False,
+            log_every_n_steps=5,
+            enable_checkpointing=False,
         ),
         optimizer_config=OptimizerConfig(name="adam", lr=1e-3),
     )
@@ -64,7 +69,10 @@ def main() -> None:
     print("inference batches:", n_out)
     if outs:
         print("output port keys:", list(outs[0].keys())[:8])
-    print("RESULT:", "npz_multi -> DynUNet via GradientTrainer PASS" if n_out else "no inference output")
+    print(
+        "RESULT:",
+        "npz_multi -> DynUNet via GradientTrainer PASS" if n_out else "no inference output",
+    )
 
 
 if __name__ == "__main__":
