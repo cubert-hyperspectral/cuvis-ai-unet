@@ -1,0 +1,18 @@
+# cuvis-ai-augment plugin manifest for the lentils examples (one yaml = one plugin).
+#
+# Git-tag source: frozen, reproducible — the loader clones and installs the tag.
+# cuvis-ai-augment is not on PyPI, so this is the default consumption path.
+name: augment
+package_name: cuvis-ai-augment
+repo: "https://github.com/cubert-hyperspectral/cuvis-ai-augment.git"
+tag: "v0.3.2"
+capabilities:
+  - class_name: cuvis_ai_augment.node.compose.AugmentationCompose
+
+# --- Local-path variant (edit-and-reload development) ------------------------
+# Use INSTEAD of repo/tag above; `path` resolves relative to THIS file.
+# name: augment
+# package_name: cuvis-ai-augment
+# path: "../../../cuvis-ai-augment"
+# capabilities:
+#   - class_name: cuvis_ai_augment.node.compose.AugmentationCompose
