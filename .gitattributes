@@ -1,0 +1,6 @@
+# Normalize all text files to LF in the repository (repo is edited on Windows
+# and executed on Linux; keep one canonical line ending everywhere).
+* text=auto eol=lf
+*.png binary
+*.pt binary
+*.ipynb text eol=lf

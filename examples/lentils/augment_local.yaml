@@ -1,0 +1,8 @@
+# Local bare manifest for the cuvis-ai-augment plugin (asai1 dev flow).
+# The package is pip-installed into the cuvis-ai env from this clone; the
+# manifest makes NodeRegistry resolve its node class for PipelineBuilder.
+name: augment
+package_name: cuvis-ai-augment
+path: "/mnt/data/anish/cuvis-ai-augment"
+capabilities:
+  - class_name: cuvis_ai_augment.node.compose.AugmentationCompose

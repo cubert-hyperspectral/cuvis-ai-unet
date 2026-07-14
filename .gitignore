@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Envs
+.venv/
+venv/
+.env
+
+# setuptools-scm
+_version.py
+
+# Training / experiment artifacts
+outputs/
+lightning_logs/
+*.pt
+*.ckpt
+*.log
+
+# Generated split files (machine-specific paths; regenerate with gen_splits.py)
+examples/**/*.csv
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

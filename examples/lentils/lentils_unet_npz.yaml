@@ -1,0 +1,46 @@
+metadata:
+  name: lentils_unet_npz_binary
+  description: DynUNet binary segmentation — npz_multi loader -> builtin CU3SDataNode -> DynUNet
+  author: Anish Raj
+
+# Only our plugin needs a manifest; CU3SDataNode is a built-in cuvis-ai node.
+plugins:
+- unet
+
+nodes:
+# Built-in source node: receives the npz_multi batch (cube/mask/wavelengths by
+# name), casts the cube to float32, passes the mask through.
+- name: DataSource
+  class_name: cuvis_ai.node.data.CU3SDataNode
+  hparams: {}
+
+- name: DynUNet
+  class_name: cuvis_ai_unet.node.dynunet.DynUNet
+  hparams:
+    mode: "2d"
+    in_channels: 61
+    num_classes: 2
+    features: [16, 32, 64]
+
+- name: DiceLoss
+  class_name: cuvis_ai_unet.node.losses.DiceLoss
+  hparams:
+    weight: 1.0
+
+- name: CrossEntropyLoss
+  class_name: cuvis_ai_unet.node.losses.CrossEntropyLoss
+  hparams:
+    weight: 1.0
+
+# Connections rename ports: cube -> data, mask -> targets.
+connections:
+- source: DataSource.outputs.cube
+  target: DynUNet.inputs.data
+- source: DynUNet.outputs.logits
+  target: DiceLoss.inputs.logits
+- source: DataSource.outputs.mask
+  target: DiceLoss.inputs.targets
+- source: DynUNet.outputs.logits
+  target: CrossEntropyLoss.inputs.logits
+- source: DataSource.outputs.mask
+  target: CrossEntropyLoss.inputs.targets

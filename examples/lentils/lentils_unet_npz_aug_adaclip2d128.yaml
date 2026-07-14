@@ -1,0 +1,68 @@
+metadata:
+  name: lentils_unet_npz_aug_adaclip2d128
+  description: Two-phase DynUNet 2D binary seg on the AdaCLIP split — 128px patches, deep 5-stage (controlled 2D-vs-3D vs adaclip3d)
+  author: Anish Raj
+
+plugins:
+- unet
+- augment
+
+nodes:
+- name: DataSource
+  class_name: cuvis_ai.node.data.CU3SDataNode
+  hparams: {}
+
+- name: Augment
+  class_name: cuvis_ai_augment.node.compose.AugmentationCompose
+  hparams:
+    seed: 0
+    extra_transform_modules: [cuvis_ai_unet.transforms]
+    transforms:
+      - {type: RandomForegroundBiasedCrop, size: [128, 128], fg_percent: 0.5, probabilistic: true}
+      - {type: RandomHorizontalFlip, prob: 0.5}
+
+- name: Norm
+  class_name: cuvis_ai.node.normalization.ZScoreNormalizer
+  hparams:
+    use_running_stats: true
+    max_init_frames: 100  # cap stat-init frames (scalar z-score is stable well under this) -> ~minutes not ~1h
+
+# Same patch (128) and split as adaclip3d, mode 2d — isolates the spectral-conv effect.
+- name: DynUNet
+  class_name: cuvis_ai_unet.node.dynunet.DynUNet
+  hparams:
+    mode: "2d"
+    in_channels: 61
+    num_classes: 2
+    features: [32, 64, 128, 256, 512]
+    tile_size: 128
+    tile_overlap: 0.5
+    tile_gaussian: true
+
+- name: DiceLoss
+  class_name: cuvis_ai_unet.node.losses.DiceLoss
+  hparams:
+    weight: 1.0
+
+- name: CrossEntropyLoss
+  class_name: cuvis_ai_unet.node.losses.CrossEntropyLoss
+  hparams:
+    weight: 1.0
+
+connections:
+- source: DataSource.outputs.cube
+  target: Augment.inputs.cube
+- source: DataSource.outputs.mask
+  target: Augment.inputs.mask
+- source: Augment.outputs.cube
+  target: Norm.inputs.data
+- source: Norm.outputs.normalized
+  target: DynUNet.inputs.data
+- source: DynUNet.outputs.logits
+  target: DiceLoss.inputs.logits
+- source: Augment.outputs.mask
+  target: DiceLoss.inputs.targets
+- source: DynUNet.outputs.logits
+  target: CrossEntropyLoss.inputs.logits
+- source: Augment.outputs.mask
+  target: CrossEntropyLoss.inputs.targets

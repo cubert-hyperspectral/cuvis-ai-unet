@@ -1,0 +1,26 @@
+# cuvis-ai-unet — bare plugin manifest (one yaml = one plugin).
+#
+# Local-path source for edit-and-reload development: `path` is resolved
+# relative to THIS file. Swap to the git-tag form (repo + tag) for a frozen,
+# reproducible install once a release is cut.
+#
+# `capabilities` lists the node classes a pipeline may instantiate. The classes
+# below are authored incrementally; the manifest is validated by
+# NodeRegistry.register_plugin once they import (Phase 2 smoke).
+name: unet
+package_name: cuvis-ai-unet
+path: "."
+capabilities:
+  - class_name: cuvis_ai_unet.node.dynunet.DynUNet
+  - class_name: cuvis_ai_unet.node.losses.DiceLoss
+  - class_name: cuvis_ai_unet.node.losses.CrossEntropyLoss
+
+# --- Git-tag source (use INSTEAD of `path:` for a frozen install) -----------
+# name: unet
+# repo: "https://github.com/cubert-hyperspectral/cuvis-ai-unet.git"
+# tag:  "v0.1.0"
+# package_name: "cuvis-ai-unet"
+# capabilities:
+#   - class_name: cuvis_ai_unet.node.dynunet.DynUNet
+#   - class_name: cuvis_ai_unet.node.losses.DiceLoss
+#   - class_name: cuvis_ai_unet.node.losses.CrossEntropyLoss
