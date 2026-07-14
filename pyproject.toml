@@ -22,7 +22,7 @@ keywords = [
 ]
 
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
   "Programming Language :: Python :: 3",
@@ -36,11 +36,14 @@ classifiers = [
 ]
 
 dependencies = [
-  "cuvis-ai-core>=0.7.1",
-  # torch is provided transitively by cuvis-ai-core (matched to the env's CUDA
-  # build); we deliberately do not re-declare it here to avoid pulling a
-  # conflicting CPU wheel. See the cuvis-ai-plugin dependency-landmines note.
+  "cuvis-ai-core>=0.10.0",
+  "cuvis-ai-schemas>=0.7.0",
+  "torch>=2.1",
 ]
+# cuvis-ai-augment is intentionally NOT a dependency: only the vendored
+# transforms module touches it, and that module is imported exclusively through
+# AugmentationCompose's `extra_transform_modules` — i.e. augment is by
+# construction already installed whenever the import happens.
 
 [project.optional-dependencies]
 dev = [
@@ -52,6 +55,16 @@ dev = [
   "detect-secrets",
   "pip-audit",
   "twine>=6.2.0",
+]
+# Runtime deps for the lentils tutorial notebooks / HF end-to-end path: `uv sync --extra notebooks`.
+# `cuvis-ai-dataloader[cu3s]` pulls the `cuvis` SDK binding transitively, but its version must match
+# the locally installed cuvis SDK (machine-specific), so that pin is a documented step in the
+# notebooks, not a hard pin here.
+notebooks = [
+  "cuvis-ai-dataloader[cu3s,coco]>=0.3",
+  "huggingface_hub",
+  "matplotlib",
+  "jupyter",
 ]
 
 [project.urls]
@@ -72,10 +85,21 @@ version_scheme = "post-release"
 local_scheme = "node-and-date"
 fallback_version = "0.1.0"
 
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
   "unit: small, fast tests that don't touch network or large data files.",
+  "integration: full-stack tests (manifest loading via NodeRegistry).",
+  "slow: GPU / real-data tests, skipped in CI (run with -m slow).",
 ]
 
 [tool.ruff]
@@ -86,21 +110,30 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "B", "UP", "C4"]
 extend-select = ["ANN201", "ANN202", "ANN204"]
 
+[tool.ruff.lint.per-file-ignores]
+# Non-library code (tests, examples, tutorial helpers): return-type annotations and compact
+# multi-statement setup lines are readability noise here, not defects.
+"tests/**" = ["ANN201", "ANN202", "ANN204", "E501", "E702"]
+"examples/**" = ["ANN201", "ANN202", "E702", "E501"]
+"notebooks/**" = ["ANN201", "ANN202", "E702", "E501", "B905", "E402"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
-exclude = ["tests", "examples", "build", "dist"]
+exclude = ["tests", "examples", "build", "dist", "notebooks"]
 
 [tool.bandit]
-exclude_dirs = ["tests", "build", "dist"]
+exclude_dirs = ["tests", "build", "dist", "notebooks"]
 skips = ["B101"]
 
 [tool.coverage.run]
 source = ["cuvis_ai_unet"]
-omit = ["tests/*", "examples/*"]
+# transforms.py is vendored from a pending cuvis-ai-augment change (tested there);
+# it leaves this package once that ships upstream.
+omit = ["tests/*", "examples/*", "notebooks/*", "cuvis_ai_unet/transforms.py"]
 
 [tool.coverage.report]
 fail_under = 70

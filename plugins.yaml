@@ -4,9 +4,9 @@
 # relative to THIS file. Swap to the git-tag form (repo + tag) for a frozen,
 # reproducible install once a release is cut.
 #
-# `capabilities` lists the node classes a pipeline may instantiate. The classes
-# below are authored incrementally; the manifest is validated by
-# NodeRegistry.register_plugin once they import (Phase 2 smoke).
+# `capabilities` lists the node classes a pipeline may instantiate; the
+# manifest is validated by NodeRegistry.register_plugin (see
+# tests/test_plugin_manifest_loading.py).
 name: unet
 package_name: cuvis-ai-unet
 path: "."
