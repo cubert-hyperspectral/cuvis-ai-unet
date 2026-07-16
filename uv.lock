@@ -709,7 +709,7 @@ wheels = [
 
 [[package]]
 name = "cuvis-ai-core"
-version = "0.10.1"
+version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -743,9 +743,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/db/e93f8bf959c39c1d8894afc2db0a87d55624d00dfdc7787424a99ade80cb/cuvis_ai_core-0.10.1.tar.gz", hash = "sha256:38305976676fc9717fcde078be2014155c1911bdc4be0117e260bbdf80501d53", size = 679445, upload-time = "2026-07-13T13:02:50.847Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/f6/1c85d67fa142433093b3414b4c6a45465b529fce45702b88b2c6724dd591/cuvis_ai_core-0.11.0.tar.gz", hash = "sha256:23d4ba6592d0fbc5191a01e126b96e793a9298840229d8052cd482efe2c64f95", size = 709007, upload-time = "2026-07-15T10:36:38.269Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/09/f4d167d1060acbfda16b7db8926b8d1b0cf98e0797a08c1f41bf1204e1e1/cuvis_ai_core-0.10.1-py3-none-any.whl", hash = "sha256:894fb24bf42a0ce36cbba54f7311a1097f4e667d66ba765d557ebd5fef2d5789", size = 211237, upload-time = "2026-07-13T13:02:49.456Z" },
+    { url = "https://files.pythonhosted.org/packages/45/63/70b802adf50b664bbc7010c059f36eb66c54c6dbca1a8b9801eebef1dc44/cuvis_ai_core-0.11.0-py3-none-any.whl", hash = "sha256:9c256ea2b18b61bfd32a243e64149039dc83766a3357df532fc7a8921711b1ed", size = 228786, upload-time = "2026-07-15T10:36:36.726Z" },
 ]
 
 [[package]]
@@ -829,9 +829,9 @@ notebooks = [
 [package.metadata]
 requires-dist = [
     { name = "bandit", marker = "extra == 'dev'" },
-    { name = "cuvis-ai-core", specifier = ">=0.10.0" },
+    { name = "cuvis-ai-core", specifier = ">=0.11.0" },
     { name = "cuvis-ai-dataloader", extras = ["coco", "cu3s"], marker = "extra == 'notebooks'", specifier = ">=0.3" },
-    { name = "cuvis-ai-schemas", specifier = ">=0.7.0" },
+    { name = "cuvis-ai-schemas", specifier = ">=0.8.0" },
     { name = "detect-secrets", marker = "extra == 'dev'" },
     { name = "huggingface-hub", marker = "extra == 'notebooks'" },
     { name = "jupyter", marker = "extra == 'notebooks'" },
@@ -3891,11 +3891,11 @@ wheels = [
 
 [[package]]
 name = "setuptools"
-version = "83.0.0"
+version = "81.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/34/26/f5d29e25ffdb535afef2d35cdb55b325298f96debd670da4c325e08d70f4/setuptools-83.0.0.tar.gz", hash = "sha256:025bccbbf0fa05b6192bc64ae1e7b16e001fd6d6d4d5de03c97b1c1ade523bef", size = 1154254, upload-time = "2026-07-04T15:31:22.699Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0d/1c/73e719955c59b8e424d015ab450f51c0af856ae46ea2da83eba51cc88de1/setuptools-81.0.0.tar.gz", hash = "sha256:487b53915f52501f0a79ccfd0c02c165ffe06631443a886740b91af4b7a5845a", size = 1198299, upload-time = "2026-02-06T21:10:39.601Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/40/e1e72872c6354b306daef1703549e8e83b4d43cfea356311bf722a043752/setuptools-83.0.0-py3-none-any.whl", hash = "sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3", size = 1008090, upload-time = "2026-07-04T15:31:20.885Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/e3/c164c88b2e5ce7b24d667b9bd83589cf4f3520d97cad01534cd3c4f55fdb/setuptools-81.0.0-py3-none-any.whl", hash = "sha256:fdd925d5c5d9f62e4b74b30d6dd7828ce236fd6ed998a08d81de62ce5a6310d6", size = 1062021, upload-time = "2026-02-06T21:10:37.175Z" },
 ]
 
 [[package]]

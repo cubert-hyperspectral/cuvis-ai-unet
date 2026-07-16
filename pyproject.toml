@@ -36,8 +36,8 @@ classifiers = [
 ]
 
 dependencies = [
-  "cuvis-ai-core>=0.10.0",
-  "cuvis-ai-schemas>=0.7.0",
+  "cuvis-ai-core>=0.11.0",
+  "cuvis-ai-schemas>=0.8.0",
   "torch>=2.1",
   "torchvision",  # transitively required (cuvis-ai-core); declared so its cu128 source override binds
 ]
