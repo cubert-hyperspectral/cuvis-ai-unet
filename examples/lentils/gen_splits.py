@@ -135,6 +135,9 @@ def main() -> None:
         train=selectors(stage_pairs["train"]),
         val=selectors(stage_pairs["val"]),
         test=selectors(stage_pairs["test"]),
+        # predict mirrors test so a Predictor pass (predict split) evaluates the test frames --
+        # the same convention as convert_split_manifest's predict_from="test".
+        predict=selectors(stage_pairs["test"]),
         leakage_check="error",
     )
 
