@@ -3,14 +3,15 @@
 Artifact mode (the ``train.py`` output — YAML + co-located name-keyed .pt)::
 
     python evaluate.py --pipeline runs/2d128/pipeline.yaml \
-        --splits-csv lentils_seg_splits_adaclip.csv
+        --universe-csv lentils_universe.csv --splits-json lentils_adaclip.splits.json
 
 Legacy mode (a raw index-keyed ``torch_layers.state_dict()`` checkpoint plus the
 pipeline config it was saved under — any missing/unexpected key is a hard error
 because index-keyed weights silently misassign under a reordered config)::
 
     python evaluate.py --config diagnostics/lentils_unet_npz_aug_adaclip2d128.yaml \
-        --raw-ckpt diag_2d128_pipeline.pt --splits-csv lentils_seg_splits_adaclip.csv
+        --raw-ckpt diag_2d128_pipeline.pt \
+        --universe-csv lentils_universe.csv --splits-json lentils_adaclip.splits.json
 
 Prints the metrics and, for the champion 2D configuration, the delta against
 the published reference numbers.
@@ -41,7 +42,8 @@ def main() -> None:
         action="store_true",
         help="legacy: tolerate missing/unexpected checkpoint keys (DANGEROUS)",
     )
-    ap.add_argument("--splits-csv", required=True)
+    ap.add_argument("--universe-csv", required=True, help="universe.csv from gen_splits.py")
+    ap.add_argument("--splits-json", required=True, help="splits.json from gen_splits.py")
     ap.add_argument("--split", default="test", choices=["train", "val", "test"])
     ap.add_argument(
         "--tile-overlap", type=float, default=None, help="override the artifact's overlap"
@@ -72,7 +74,8 @@ def main() -> None:
 
     m = eng.evaluate(
         pipe,
-        args.splits_csv,
+        args.universe_csv,
+        args.splits_json,
         split=args.split,
         tile_overlap=args.tile_overlap,
         tile_batch=args.tile_batch,

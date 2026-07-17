@@ -4,8 +4,9 @@ Sweeps tile_overlap x tile_batch over test frames pre-loaded to the GPU and
 prints DynUNet/Norm ms per frame, fps, and peak memory (plus the full per-node
 table when exactly one combination is requested)::
 
-    python profile.py --pipeline runs/2d128/pipeline.yaml \
-        --splits-csv lentils_seg_splits_adaclip.csv --overlaps 0,0.5 --tile-batches 1,16
+    python profile_pipeline.py --pipeline runs/2d128/pipeline.yaml \
+        --universe-csv lentils_universe.csv --splits-json lentils_adaclip.splits.json \
+        --overlaps 0,0.5 --tile-batches 1,16
 """
 
 from __future__ import annotations
@@ -23,7 +24,8 @@ def main() -> None:
     ap.add_argument(
         "--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)"
     )
-    ap.add_argument("--splits-csv", required=True)
+    ap.add_argument("--universe-csv", required=True, help="universe.csv from gen_splits.py")
+    ap.add_argument("--splits-json", required=True, help="splits.json from gen_splits.py")
     ap.add_argument("--split", default="test", choices=["train", "val", "test"])
     ap.add_argument("--frames", type=int, default=8)
     ap.add_argument("--skip", type=int, default=2, help="warmup forwards discarded per combination")
@@ -38,7 +40,8 @@ def main() -> None:
     pipe = eng.load_artifact(args.pipeline, args.weights, device=args.device, registry=registry)
     eng.profile(
         pipe,
-        args.splits_csv,
+        args.universe_csv,
+        args.splits_json,
         split=args.split,
         frames=args.frames,
         skip=args.skip,
