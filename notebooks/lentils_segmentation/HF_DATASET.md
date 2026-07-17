@@ -17,29 +17,30 @@ foreign objects placed among them.
 
 ## How the notebooks consume it
 
-`utils.ensure_lentils_npz` (hf mode, the default):
+Both notebooks provision the data **inline** (section 1 of `01_train.ipynb`), in two steps that each
+skip when their output already exists:
 
-1. downloads `splits.csv` and the referenced `.cu3s` + COCO files from HuggingFace
-   (`HF_TOKEN` recommended — anonymous downloads are rate-limited),
-2. converts each needed frame to a per-frame NPZ — `cube [H,W,61] float32`,
+1. **Fetch** the raw dataset with `PublicDatasets.download_dataset("industrial_fod_lentils", ...)`
+   (`HF_TOKEN` recommended — anonymous downloads are rate-limited).
+2. **Convert** the `splits.csv` frames to per-frame NPZ — `cube [H,W,61] float32`,
    `wavelengths [61]`, `mask [H,W] int32` (binary foreground, rasterized from the polygons),
-   `class_mask [H,W] uint8` (category ids) — via `cuvis_ai_dataloader`'s converter
-   (requires the **Cuvis C++ SDK** and a matching `cuvis` Python pin), and
-3. writes the `(split, npz_path, image_id)` CSV that `MultiNpzDataModule` reads, with the train
-   rows repeated `repeat` times (the patches-per-frame multiplicity).
+   `class_mask [H,W] uint8` (category ids) — with `cuvis_ai_dataloader`'s `convert_split_manifest`
+   (requires the **Cuvis C++ SDK** + `cuvis-ai-dataloader[cu3s,coco]`). It emits two artifacts:
+   a **`universe.csv`** (`source, index, path`: one row per frame) and a **`splits.json`** (a core
+   `DataSplitConfig` of file-index selectors), which `MultiNpzDataModule` (`npz_multi`) reads.
 
-Already have converted NPZ frames? Skip the SDK path entirely with:
+The train-frame multiplicity that used to be baked into the CSV is now `samples_per_frame` on the
+data module (N independent foreground-biased crops per frame per epoch), so the universe holds each
+frame once.
 
-```bash
-export LENTILS_DATA_SOURCE=local
-export LENTILS_SPLITS_CSV=/path/to/lentils_seg_splits.csv
-```
-
-`examples/lentils/gen_splits.py` builds such a CSV from any directory of per-frame NPZs.
+Already have converted NPZ frames and want to skip the SDK entirely?
+`examples/lentils/gen_splits.py` builds the same `universe.csv` + `splits.json` from a directory of
+per-frame NPZ (plus a legacy `(split, npz_path, image_id)` CSV), preserving the exact split — no
+cu3s or Cuvis SDK needed.
 
 ## Storage expectations
 
 Full-resolution frames are large: ~145 MB on disk per compressed NPZ (~263 MB decompressed),
 so the full 1136-frame conversion needs roughly 165 GB plus the ~41 GB cu3s download cache.
-The tutorials default to a small `limit` so a first run fits in a few GB; scale up for champion
-reproductions.
+The notebooks default to a small `SMOKE_LIMIT` (frames per split) so a first run fits in a few GB;
+set `SMOKE_LIMIT = 0` to convert the full split for a champion reproduction.
