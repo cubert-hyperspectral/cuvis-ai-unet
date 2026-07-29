@@ -44,7 +44,9 @@ def test_node_contract() -> None:
 def test_perfect_prediction_scores_one() -> None:
     node = SegMetrics(name="SegMetrics")
     targets = _mask_with_block(slice(2, 4), slice(2, 4))
-    out = node.forward(_logits_from_mask(targets), targets, context=Context(stage=ExecutionStage.VAL))
+    out = node.forward(
+        _logits_from_mask(targets), targets, context=Context(stage=ExecutionStage.VAL)
+    )
 
     metrics = out["metrics"]
     assert all(isinstance(m, Metric) for m in metrics)
@@ -75,10 +77,12 @@ def test_normal_frames_skip_fg_scores_but_count_pixels() -> None:
     # Batch of two frames: one all-background (perfectly predicted), one object frame with
     # partial overlap. fg-IoU/Dice average over the object frame only; pixel accuracy pools both.
     node = SegMetrics(name="SegMetrics")
-    targets = torch.cat([_mask_with_block(slice(0, 0), slice(0, 0)),
-                         _mask_with_block(slice(2, 4), slice(2, 4))])
-    pred = torch.cat([_mask_with_block(slice(0, 0), slice(0, 0)),
-                      _mask_with_block(slice(2, 4), slice(3, 5))])
+    targets = torch.cat(
+        [_mask_with_block(slice(0, 0), slice(0, 0)), _mask_with_block(slice(2, 4), slice(2, 4))]
+    )
+    pred = torch.cat(
+        [_mask_with_block(slice(0, 0), slice(0, 0)), _mask_with_block(slice(2, 4), slice(3, 5))]
+    )
     out = node.forward(_logits_from_mask(pred), targets, context=Context(stage=ExecutionStage.VAL))
 
     by_name = {m.name: m.value for m in out["metrics"]}
