@@ -2,8 +2,8 @@
 
 The multi-npz datamodule (``npz_multi``) is driven by two artifacts:
 
-* a ``universe.csv`` (``source, index, path``): one row per frame, mapping the
-  logical identity ``(source, index)`` to the physical ``.npz``.  ``source`` is
+* a ``universe.csv`` (``source, index, materialized_path``): one row per frame,
+  mapping the logical identity ``(source, index)`` to the physical ``.npz``.  ``source`` is
   the cu3s origin baked into each npz (``source_cu3s``), normalized to its
   dataset-relative form (the path tail after ``/data/``) so selectors are clean
   and machine-independent; ``index`` is the read position (== COCO image_id).
@@ -110,7 +110,7 @@ def main() -> None:
         stored = str(npz_path)
         if args.relative_paths:
             stored = str(Path(npz_path).relative_to(csv_dir))
-        records.append({"source": source, "index": index, "path": stored})
+        records.append({"source": source, "index": index, "materialized_path": stored})
         if meta["split"] in stage_pairs:
             stage_pairs[meta["split"]].append(identity)
 
@@ -118,7 +118,7 @@ def main() -> None:
 
     out_universe.parent.mkdir(parents=True, exist_ok=True)
     with out_universe.open("w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=["source", "index", "path"])
+        w = csv.DictWriter(fh, fieldnames=["source", "index", "materialized_path"])
         w.writeheader()
         w.writerows(records)
 

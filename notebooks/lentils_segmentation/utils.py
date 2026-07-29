@@ -18,7 +18,7 @@ Data workflow
 The notebooks fetch the 61-band VNIR (430–910 nm) foreign-object dataset from HuggingFace with
 :class:`cuvis_ai_core.data.public_datasets.PublicDatasets`, then convert the ``splits.csv`` frames
 to per-frame NPZ (baked binary ``mask`` + multi-class ``class_mask``) with cuvis-ai-dataloader's
-``convert_split_manifest``. That emits a **universe.csv** (``source, index, path``) and a
+``convert_split_manifest``. That emits a **universe.csv** (``source, index, materialized_path``) and a
 **splits.json** (a core ``DataSplitConfig`` of file-index selectors) which ``MultiNpzDataModule``
 (``npz_multi``) reads. Converting cu3s needs ``cuvis-ai-dataloader[cu3s,coco]`` + the Cuvis SDK.
 """
@@ -37,7 +37,12 @@ AUGMENT_MANIFEST = REPO_ROOT / "examples" / "lentils" / "augment.yaml"
 
 #: Trained-artifact dir the inference notebook reads by default (the train notebook's output).
 DEFAULT_PIPELINE_DIR = (
-    REPO_ROOT / "notebooks" / "lentils_segmentation" / "outputs" / "lentils_unet_run" / "trained_models"
+    REPO_ROOT
+    / "notebooks"
+    / "lentils_segmentation"
+    / "outputs"
+    / "lentils_unet_run"
+    / "trained_models"
 )
 
 #: Champion reference (2D @ 128 px, full split, 20 epochs) — what a full reproduction aims for.
@@ -74,7 +79,8 @@ def load_lentils_frame(npz_path: str | Path) -> dict[str, np.ndarray]:
         h, w = cube.shape[0], cube.shape[1]
         mask = np.asarray(z["mask"], np.int32) if "mask" in z.files else np.zeros((h, w), np.int32)
         class_mask = (
-            np.asarray(z["class_mask"], np.uint8) if "class_mask" in z.files
+            np.asarray(z["class_mask"], np.uint8)
+            if "class_mask" in z.files
             else np.zeros((h, w), np.uint8)
         )
     return {"cube": cube, "wavelengths": wl, "mask": mask, "class_mask": class_mask}
@@ -87,29 +93,45 @@ def _norm(x: np.ndarray) -> np.ndarray:
     return np.zeros_like(x) if hi - lo < 1e-12 else np.clip((x - lo) / (hi - lo), 0, 1)
 
 
-def false_color(cube_hwc: np.ndarray, wavelengths: np.ndarray, targets_nm=(650.0, 550.0, 450.0)) -> np.ndarray:
+def false_color(
+    cube_hwc: np.ndarray, wavelengths: np.ndarray, targets_nm=(650.0, 550.0, 450.0)
+) -> np.ndarray:
     """Nearest-wavelength 3-channel false-color from a 61-ch cube (for display only)."""
     wl = np.asarray(wavelengths).ravel().astype(float)
     idx = [int(np.argmin(np.abs(wl - t))) for t in targets_nm]
     return _norm(cube_hwc[..., idx])
 
 
-def render_segmentation_panel(cube_hwc, fg_prob, pred_mask, *, wavelengths, gt_mask=None,
-                              targets_nm=(650.0, 550.0, 450.0), title=None, figsize=(16.0, 4.0)) -> Any:
+def render_segmentation_panel(
+    cube_hwc,
+    fg_prob,
+    pred_mask,
+    *,
+    wavelengths,
+    gt_mask=None,
+    targets_nm=(650.0, 550.0, 450.0),
+    title=None,
+    figsize=(16.0, 4.0),
+) -> Any:
     """Per-frame story: false-color RGB, foreground probability, prediction (cyan) vs GT (red)."""
     import matplotlib.pyplot as plt
 
     rgb = false_color(cube_hwc, wavelengths, targets_nm)
     fig, ax = plt.subplots(1, 3, figsize=figsize)
-    ax[0].imshow(rgb); ax[0].set_title("false-color RGB"); ax[0].axis("off")
-    ax[1].imshow(_norm(fg_prob), cmap="inferno"); ax[1].set_title("foreground probability"); ax[1].axis("off")
+    ax[0].imshow(rgb)
+    ax[0].set_title("false-color RGB")
+    ax[0].axis("off")
+    ax[1].imshow(_norm(fg_prob), cmap="inferno")
+    ax[1].set_title("foreground probability")
+    ax[1].axis("off")
     ax[2].imshow(rgb)
     ax[2].contour(np.asarray(pred_mask) > 0, levels=[0.5], colors="cyan", linewidths=1.2)
     if gt_mask is not None:
         if np.asarray(gt_mask).ndim > 2:
             gt_mask = np.squeeze(gt_mask)
         ax[2].contour(np.asarray(gt_mask) > 0, levels=[0.5], colors="red", linewidths=1.0)
-    ax[2].set_title("prediction (cyan) vs GT (red)"); ax[2].axis("off")
+    ax[2].set_title("prediction (cyan) vs GT (red)")
+    ax[2].axis("off")
     if title:
         fig.suptitle(title, y=1.02)
     fig.tight_layout()

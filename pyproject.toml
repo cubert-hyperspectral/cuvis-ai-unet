@@ -62,7 +62,11 @@ dev = [
 # the locally installed cuvis SDK (machine-specific), so that pin is a documented step in the
 # notebooks, not a hard pin here.
 notebooks = [
-  "cuvis-ai-dataloader[cu3s,coco]>=0.3",
+  "cuvis-ai-dataloader[cu3s,coco]>=0.5.0",  # universe.csv (materialized_path) vocabulary
+  "cuvis-ai>=0.11",  # builtin nodes the notebooks wire (CU3SDataNode, ZScoreNormalizer, TensorBoard monitor)
+  # cuvis-ai-augment (AugmentationCompose) is git-tag-released, not on PyPI, so it cannot live in
+  # this extra: install it alongside, e.g.
+  #   pip install "cuvis-ai-augment @ git+https://github.com/cubert-hyperspectral/cuvis-ai-augment.git@v0.3.2"
   "huggingface_hub",
   "matplotlib",
   "jupyter",

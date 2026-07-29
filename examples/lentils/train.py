@@ -67,7 +67,7 @@ def main() -> None:
         action="store_true",
         help="crop foreground-biased patches in the dataloader (npz_multi crop_size=[patch,patch]) "
         "instead of the augment graph node — ships ~patch-sized samples for a large I/O win "
-        "(needs a dataloader with crop support, ALL-5905). fg-percent applies to the dataset crop.",
+        "(needs a dataloader release with npz_multi crop support). fg-percent applies to the crop.",
     )
     ap.add_argument("--hflip-prob", type=float, default=0.5, help="horizontal-flip probability")
     ap.add_argument(
@@ -79,7 +79,9 @@ def main() -> None:
         help="checkpoint + save the pipeline from the best val_loss epoch (needs --val-every N); "
         "a divergence to NaN val_loss never overwrites the best",
     )
-    ap.add_argument("--grad-clip", type=float, default=None, help="gradient clip value (None = off)")
+    ap.add_argument(
+        "--grad-clip", type=float, default=None, help="gradient clip value (None = off)"
+    )
     ap.add_argument(
         "--tensorboard",
         action="store_true",

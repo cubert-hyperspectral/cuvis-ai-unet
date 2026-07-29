@@ -26,7 +26,7 @@ skip when their output already exists:
    `wavelengths [61]`, `mask [H,W] int32` (binary foreground, rasterized from the polygons),
    `class_mask [H,W] uint8` (category ids) — with `cuvis_ai_dataloader`'s `convert_split_manifest`
    (requires the **Cuvis C++ SDK** + `cuvis-ai-dataloader[cu3s,coco]`). It emits two artifacts:
-   a **`universe.csv`** (`source, index, path`: one row per frame) and a **`splits.json`** (a core
+   a **`universe.csv`** (`source, index, materialized_path`: one row per frame) and a **`splits.json`** (a core
    `DataSplitConfig` of file-index selectors), which `MultiNpzDataModule` (`npz_multi`) reads.
 
 The train-frame multiplicity that used to be baked into the CSV is now `samples_per_frame` on the

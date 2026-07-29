@@ -193,7 +193,9 @@ def build_graph(
 
         seg = SegMetrics(name="SegMetrics")
         tb = TensorBoardMonitorNode(
-            name="TensorBoard", output_dir=tb_dir or "runs/tensorboard", run_name=tb_run_name or name
+            name="TensorBoard",
+            output_dir=tb_dir or "runs/tensorboard",
+            run_name=tb_run_name or name,
         )
         edges += [
             (net.outputs.logits, seg.inputs.logits),
@@ -225,10 +227,11 @@ def make_datamodule(
     crops per frame per epoch) is applied by the base datamodule to the *train*
     split only — val/test stay one crop per frame.
 
-    ``crop_size`` (needs a dataloader with npz_multi crop support, ALL-5905) makes the
-    dataset return a foreground-biased ``(h, w)`` patch per train sample instead of the
-    whole frame — the I/O-cheap alternative to the in-graph crop node (build the graph
-    with ``dataset_crop=True`` so the crop is not applied twice). Val/test stay full-frame.
+    ``crop_size`` (needs a dataloader release with npz_multi crop support; no released
+    version has it yet, so passing it raises with instructions) makes the dataset return
+    a foreground-biased ``(h, w)`` patch per train sample instead of the whole frame —
+    the I/O-cheap alternative to the in-graph crop node (build the graph with
+    ``dataset_crop=True`` so the crop is not applied twice). Val/test stay full-frame.
 
     CAVEAT (``dataset_crop``): the crop then sits *upstream* of the ``Norm`` node, so the
     Phase-1 ZScoreNormalizer fits its running stats on the cropped train patches, not on
@@ -249,6 +252,12 @@ def make_datamodule(
     if samples_per_frame is not None:
         kwargs["samples_per_frame"] = samples_per_frame
     if crop_size is not None:
+        if "crop_size" not in inspect.signature(MultiNpzDataModule.__init__).parameters:
+            raise RuntimeError(
+                "--dataset-crop needs a cuvis-ai-dataloader with npz_multi crop_size "
+                "support (not yet released); use the in-graph crop (the default, "
+                "without --dataset-crop) instead."
+            )
         kwargs["crop_size"] = tuple(crop_size)
         kwargs["crop_fg_percent"] = crop_fg_percent
     return MultiNpzDataModule(**kwargs)
@@ -322,7 +331,9 @@ def train(
     metric_nodes = [nodes["SegMetrics"]] if "SegMetrics" in nodes else None
     monitors = [nodes["TensorBoard"]] if "TensorBoard" in nodes else None
     if save_best_val and val_every <= 0:
-        raise ValueError("save_best_val requires val_every > 0 (validation must run to rank epochs).")
+        raise ValueError(
+            "save_best_val requires val_every > 0 (validation must run to rank epochs)."
+        )
     # best-val checkpointing: a ModelCheckpoint on val_loss, kept IN the callbacks list so the
     # trainer uses it (a passed callbacks list takes precedence over training_config.callbacks;
     # relying on the config alone would silently fall back to Lightning's default last-epoch
@@ -500,7 +511,7 @@ def split_frames(
     dm = make_datamodule(universe_csv, splits_json, batch_size=1, num_workers=0)
     dm.setup(stage=None)
     ds = {"train": dm.train_ds, "val": dm.val_ds, "test": dm.test_ds}.get(split)
-    return [rec["path"] for rec in ds.rows] if ds is not None else []
+    return [rec["materialized_path"] for rec in ds.rows] if ds is not None else []
 
 
 def evaluate(
