@@ -12,12 +12,11 @@ from __future__ import annotations
 from typing import Any
 
 import torch
-from torch import Tensor
-
 from cuvis_ai_core.node.node import Node
 from cuvis_ai_schemas.enums import ExecutionStage, NodeCategory, NodeTag
 from cuvis_ai_schemas.execution import Context, Metric
 from cuvis_ai_schemas.pipeline import PortSpec
+from torch import Tensor
 
 _VAL_TEST = {ExecutionStage.VAL, ExecutionStage.TEST}
 
@@ -55,7 +54,9 @@ class SegMetrics(Node):
         self._total_px = 0.0
 
     @torch.no_grad()
-    def forward(self, logits: Tensor, targets: Tensor, context: Context | None = None, **_: Any) -> dict[str, Any]:
+    def forward(
+        self, logits: Tensor, targets: Tensor, context: Context | None = None, **_: Any
+    ) -> dict[str, Any]:
         """Foreground (class >= 1) IoU / Dice averaged over object frames + pixel accuracy.
 
         Returns the per-batch metrics (consumed by the TensorBoard sink; the trainer pools them
