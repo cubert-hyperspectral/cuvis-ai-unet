@@ -105,6 +105,10 @@ class SegMetrics(Node):
 
         Read this after a ``Predictor`` test pass (the gold-standard node-metric idiom); ``nan``
         for fg-IoU/Dice when the pass contained no object frames.
+
+        Note ``pixel_acc`` is *foreground-binary* accuracy (``pred>=1`` vs ``target>=1``), not a
+        multiclass score; with foreground ~0.06 % of pixels it reads ~0.9997 for almost any model,
+        so it is a sanity floor, not a discriminating metric — rank models by fg-IoU/fg-Dice.
         """
         mean = lambda xs: sum(xs) / len(xs) if xs else float("nan")  # noqa: E731
         return {

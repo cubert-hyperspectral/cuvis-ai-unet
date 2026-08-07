@@ -3,7 +3,8 @@
 The manifest-loading smoke (test_plugin_manifest_loading) proves the nodes resolve
 from the manifest; this proves the stronger reload contract the plugin skill calls
 out — a built pipeline serializes, rebuilds from its config through a fresh
-NodeRegistry, restores its weights, and reproduces its output bit-for-bit. It uses
+NodeRegistry, restores its weights, and reproduces its output to within a 1e-6
+tolerance. It uses
 only the plugin's own nodes (DynUNet + the loss nodes), so it needs neither the
 augment plugin nor the running-stats normalizer, and runs CPU-only.
 """
@@ -26,9 +27,6 @@ def test_pipeline_save_load_forward_roundtrip(tmp_path) -> None:
 
     from cuvis_ai_unet.node.dynunet import DynUNet
     from cuvis_ai_unet.node.losses import CrossEntropyLoss, DiceLoss
-
-    registry = NodeRegistry()
-    registry.register_plugin(str(MANIFEST))
 
     in_channels, num_classes = 4, 2
     net = DynUNet(
