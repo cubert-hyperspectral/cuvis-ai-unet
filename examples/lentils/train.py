@@ -2,17 +2,14 @@
 
 Champion reproduction (2D @ 128, AdaCLIP split, expect fg-IoU ≈ 0.79 on eval)::
 
-    python train.py --splits-csv lentils_seg_splits_adaclip.csv \
+    python train.py --universe-csv lentils_universe.csv \
+        --splits-json lentils_adaclip.splits.json \
         --epochs 20 --batch 8 --num-workers 4 --out runs/2d128
 
-Quick CPU wiring smoke::
-
-    python train.py --splits-csv splits.csv --limit 6 --epochs 1 --batch 2 \
-        --accelerator cpu --normalizer persample --out /tmp/smoke
-
-The splits CSV comes from ``gen_splits.py`` (train-row repetition there is the
-patches-per-frame multiplicity). Evaluate the saved artifact with
-``evaluate.py``; profile it with ``profile_pipeline.py``.
+The universe.csv + splits.json come from ``gen_splits.py``. Patches-per-frame
+multiplicity is ``--samples-per-frame N`` (the base datamodule draws N fresh
+fg-biased crops per train frame per epoch; val/test are unaffected). Evaluate the
+saved artifact with ``evaluate.py``; profile it with ``profile_pipeline.py``.
 """
 
 from __future__ import annotations
@@ -27,7 +24,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--splits-csv", required=True, help="splits CSV from gen_splits.py")
+    ap.add_argument("--universe-csv", required=True, help="universe.csv from gen_splits.py")
+    ap.add_argument("--splits-json", required=True, help="splits.json from gen_splits.py")
     ap.add_argument(
         "--out", required=True, help="output dir for the artifact (pipeline.yaml + .pt + run.json)"
     )
@@ -64,6 +62,32 @@ def main() -> None:
     )
     ap.add_argument("--tile-overlap", type=float, default=0.5)
     ap.add_argument("--tile-batch", type=int, default=16)
+    ap.add_argument(
+        "--dataset-crop",
+        action="store_true",
+        help="crop foreground-biased patches in the dataloader (npz_multi crop_size=[patch,patch]) "
+        "instead of the augment graph node — ships ~patch-sized samples for a large I/O win "
+        "(needs a dataloader release with npz_multi crop support). fg-percent applies to the crop.",
+    )
+    ap.add_argument("--hflip-prob", type=float, default=0.5, help="horizontal-flip probability")
+    ap.add_argument(
+        "--vflip-prob", type=float, default=0.5, help="vertical-flip probability (0 disables it)"
+    )
+    ap.add_argument(
+        "--save-best-val",
+        action="store_true",
+        help="checkpoint + save the pipeline from the best val_loss epoch (needs --val-every N); "
+        "a divergence to NaN val_loss never overwrites the best",
+    )
+    ap.add_argument(
+        "--grad-clip", type=float, default=None, help="gradient clip value (None = off)"
+    )
+    ap.add_argument(
+        "--tensorboard",
+        action="store_true",
+        help="wire SegMetrics + TensorBoardMonitorNode into the graph "
+        "(view: tensorboard --logdir <out>/tensorboard); pair with --val-every N for val curves",
+    )
     ap.add_argument("--accelerator", default="auto")
     ap.add_argument("--unet-manifest", default=str(eng.UNET_MANIFEST))
     ap.add_argument("--augment-manifest", default=str(eng.AUGMENT_MANIFEST))
@@ -81,15 +105,24 @@ def main() -> None:
         normalizer=args.normalizer,
         max_init_frames=args.max_init_frames,
         fg_percent=args.fg_percent,
+        hflip_prob=args.hflip_prob,
+        vflip_prob=args.vflip_prob,
+        dataset_crop=args.dataset_crop,
         dice_weight=args.dice_weight,
         ce_weight=args.ce_weight,
+        with_metrics=args.tensorboard,
+        tb_dir=str(Path(args.out) / "tensorboard"),
+        tb_run_name=f"{args.mode}{args.patch}",
     )
     print("pipeline nodes:", [n.name for n in pipe.nodes], flush=True)
     dm = eng.make_datamodule(
-        args.splits_csv,
+        args.universe_csv,
+        args.splits_json,
         batch_size=args.batch,
         num_workers=args.num_workers,
         samples_per_frame=args.samples_per_frame,
+        crop_size=(args.patch, args.patch) if args.dataset_crop else None,
+        crop_fg_percent=args.fg_percent,
     )
     eng.train(
         pipe,
@@ -98,6 +131,8 @@ def main() -> None:
         lr=args.lr,
         accelerator=args.accelerator,
         val_every=args.val_every,
+        save_best_val=args.save_best_val,
+        gradient_clip_val=args.grad_clip,
         out_dir=Path(args.out),
         run_meta={"args": vars(args)},
     )

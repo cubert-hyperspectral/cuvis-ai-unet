@@ -20,7 +20,6 @@ orders are numerically equivalent (an elementwise affine commutes with cropping)
 
 from __future__ import annotations
 
-import csv
 import inspect
 import json
 import subprocess
@@ -30,7 +29,7 @@ from typing import Any
 
 import numpy as np
 import torch
-from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 
 # Full lentils frames are ~263 MB (1000x1080x61 f32); the default file-descriptor
 # sharing strategy pushes these through /dev/shm and exhausts it with several
@@ -43,8 +42,8 @@ from cuvis_ai_core.training.config import PipelineMetadata
 from cuvis_ai_core.utils.node_registry import NodeRegistry
 from cuvis_ai_schemas.enums import ExecutionStage
 from cuvis_ai_schemas.execution import Context
+from cuvis_ai_schemas.training.config import TrainingConfig
 from cuvis_ai_schemas.training.optimizer import OptimizerConfig
-from cuvis_ai_schemas.training.trainer import TrainerConfig
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
@@ -89,9 +88,14 @@ def build_graph(
     max_init_frames: int = 100,
     fg_percent: float = 0.5,
     hflip_prob: float = 0.5,
+    vflip_prob: float = 0.5,
+    dataset_crop: bool = False,
     augment_seed: int = 0,
     dice_weight: float = 1.0,
     ce_weight: float = 1.0,
+    with_metrics: bool = False,
+    tb_dir: str | None = None,
+    tb_run_name: str | None = None,
     name: str = "lentils_unet",
 ) -> CuvisPipeline:
     """Build the segmentation pipeline in code and return it (untrained).
@@ -129,18 +133,29 @@ def build_graph(
 
     source = CU3SDataNode(name="DataSource")
     norm = ZScoreNormalizer(name="Norm", **norm_kwargs)
-    augment = AugmentationCompose(
-        name="Augment",
-        seed=augment_seed,
-        extra_transform_modules=["cuvis_ai_unet.transforms"],
-        transforms=[
+    # The foreground-biased crop is either a graph transform here (default) OR done in the
+    # dataloader (dataset_crop=True -> npz_multi crop_size); doing both would double-crop, so
+    # when the dataloader crops we keep only the flips (which run on the already-cropped patch).
+    crop_transforms = (
+        []
+        if dataset_crop
+        else [
             {
                 "type": "RandomForegroundBiasedCrop",
                 "size": [patch, patch],
                 "fg_percent": fg_percent,
                 "probabilistic": True,
-            },
+            }
+        ]
+    )
+    augment = AugmentationCompose(
+        name="Augment",
+        seed=augment_seed,
+        extra_transform_modules=["cuvis_ai_unet.transforms"],
+        transforms=[
+            *crop_transforms,
             {"type": "RandomHorizontalFlip", "prob": hflip_prob},
+            {"type": "RandomVerticalFlip", "prob": vflip_prob},
         ],
     )
     net = DynUNet(
@@ -157,8 +172,7 @@ def build_graph(
     dice = DiceLoss(name="DiceLoss", weight=dice_weight)
     ce = CrossEntropyLoss(name="CrossEntropyLoss", weight=ce_weight)
 
-    pipe = CuvisPipeline(name)
-    pipe.connect(
+    edges = [
         (source.outputs.cube, norm.inputs.data),
         (norm.outputs.normalized, augment.inputs.cube),
         (source.outputs.mask, augment.inputs.mask),
@@ -167,41 +181,85 @@ def build_graph(
         (augment.outputs.mask, dice.inputs.targets),
         (net.outputs.logits, ce.inputs.logits),
         (augment.outputs.mask, ce.inputs.targets),
-    )
+    ]
+    if with_metrics:
+        # SegMetrics computes fg-IoU/Dice at VAL/TEST (no builtin seg-metric node exists);
+        # TensorBoardMonitorNode is the ecosystem sink that streams them to TensorBoard.
+        # Both are wired INTO the graph here so validation actually logs metric curves;
+        # train(...) passes metric_nodes=[SegMetrics], monitors=[TensorBoard] to the trainer.
+        from cuvis_ai.node.monitor import TensorBoardMonitorNode
+
+        from cuvis_ai_unet.node.seg_metrics import SegMetrics
+
+        seg = SegMetrics(name="SegMetrics")
+        tb = TensorBoardMonitorNode(
+            name="TensorBoard",
+            output_dir=tb_dir or "runs/tensorboard",
+            run_name=tb_run_name or name,
+        )
+        edges += [
+            (net.outputs.logits, seg.inputs.logits),
+            (augment.outputs.mask, seg.inputs.targets),
+            (seg.outputs.metrics, tb.inputs.metrics),
+        ]
+
+    pipe = CuvisPipeline(name)
+    pipe.connect(*edges)
     return pipe
 
 
 def make_datamodule(
-    splits_csv: str | Path,
+    universe_csv: str | Path,
+    splits_json: str | Path,
     *,
     batch_size: int = 8,
     num_workers: int = 4,
     samples_per_frame: int | None = None,
+    crop_size: tuple[int, int] | None = None,
+    crop_fg_percent: float = 0.5,
 ):
-    """Build the multi-npz datamodule for a splits CSV.
+    """Build the multi-npz datamodule from a universe.csv + splits.json.
 
-    ``samples_per_frame`` (N fg-biased crops per frame per epoch) is forwarded
-    when the installed dataloader supports it; on older versions the same
-    multiplicity comes from ``gen_splits.py --repeat`` (train rows repeated in
-    the CSV), and asking for it here raises rather than silently ignoring.
+    Both artifacts come from ``gen_splits.py`` (from existing NPZ, SDK-free) or
+    ``convert_split_manifest`` (from cu3s + COCO): the universe.csv maps each frame's
+    ``(source, index)`` identity to its ``.npz``; the splits.json is a
+    ``DataSplitConfig`` of per-source selectors. ``samples_per_frame`` (N fg-biased
+    crops per frame per epoch) is applied by the base datamodule to the *train*
+    split only — val/test stay one crop per frame.
+
+    ``crop_size`` (needs a dataloader release with npz_multi crop support; no released
+    version has it yet, so passing it raises with instructions) makes the dataset return
+    a foreground-biased ``(h, w)`` patch per train sample instead of the whole frame —
+    the I/O-cheap alternative to the in-graph crop node (build the graph with
+    ``dataset_crop=True`` so the crop is not applied twice). Val/test stay full-frame.
+
+    CAVEAT (``dataset_crop``): the crop then sits *upstream* of the ``Norm`` node, so the
+    Phase-1 ZScoreNormalizer fits its running stats on the cropped train patches, not on
+    full frames (eval frames are normalized with those crop-fit stats). With global z-score
+    this only shifts the fitted mean/std and is usually fine, but it makes the run not
+    strictly comparable to an in-graph-crop run whose Norm was fit on full frames.
     """
+    from cuvis_ai_core.data.splits_io import load_splits
     from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
 
     kwargs: dict[str, Any] = {
-        "splits_csv": str(splits_csv),
-        "split": "test",
+        "universe_csv": str(universe_csv),
+        "splits": load_splits(str(splits_json)),
         "batch_size": batch_size,
         "num_workers": num_workers,
         "persistent_workers": num_workers > 0,
     }
     if samples_per_frame is not None:
-        if "samples_per_frame" not in inspect.signature(MultiNpzDataModule.__init__).parameters:
-            raise RuntimeError(
-                "--samples-per-frame needs a cuvis-ai-dataloader with base-module "
-                "samples_per_frame support (pending release); use gen_splits.py "
-                "--repeat to bake the multiplicity into the CSV instead."
-            )
         kwargs["samples_per_frame"] = samples_per_frame
+    if crop_size is not None:
+        if "crop_size" not in inspect.signature(MultiNpzDataModule.__init__).parameters:
+            raise RuntimeError(
+                "--dataset-crop needs a cuvis-ai-dataloader with npz_multi crop_size "
+                "support (not yet released); use the in-graph crop (the default, "
+                "without --dataset-crop) instead."
+            )
+        kwargs["crop_size"] = tuple(crop_size)
+        kwargs["crop_fg_percent"] = crop_fg_percent
     return MultiNpzDataModule(**kwargs)
 
 
@@ -242,6 +300,8 @@ def train(
     lr: float = 1e-3,
     accelerator: str = "auto",
     val_every: int = 0,
+    save_best_val: bool = False,
+    gradient_clip_val: float | None = None,
     out_dir: str | Path,
     run_meta: dict[str, Any] | None = None,
 ) -> Path:
@@ -265,27 +325,63 @@ def train(
     t_stat = time.monotonic() - t0
 
     pipeline.unfreeze_nodes_by_name(["DynUNet"])
+    # If build_graph(with_metrics=True) added them, feed the metric node + TensorBoard sink
+    # to the trainer: metric_nodes -> logged as SegMetrics/fg_iou etc. at val/test; monitors
+    # -> the TensorBoard writer that also receives train/loss + val/loss aggregates.
+    metric_nodes = [nodes["SegMetrics"]] if "SegMetrics" in nodes else None
+    monitors = [nodes["TensorBoard"]] if "TensorBoard" in nodes else None
+    if save_best_val and val_every <= 0:
+        raise ValueError(
+            "save_best_val requires val_every > 0 (validation must run to rank epochs)."
+        )
+    # best-val checkpointing: a ModelCheckpoint on val_loss, kept IN the callbacks list so the
+    # trainer uses it (a passed callbacks list takes precedence over training_config.callbacks;
+    # relying on the config alone would silently fall back to Lightning's default last-epoch
+    # checkpoint). A divergence that sends val_loss to NaN never beats the best, so the reloaded
+    # + saved model stays the best pre-divergence epoch.
+    callbacks: list[Callback] = [EpochLog()]
+    if save_best_val:
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=str(out / "checkpoints"),
+                monitor="val_loss",
+                mode="min",
+                save_top_k=1,
+                save_last=True,
+                verbose=True,
+            )
+        )
     trainer = GradientTrainer(
         pipeline=pipeline,
         datamodule=datamodule,
         loss_nodes=[nodes["DiceLoss"], nodes["CrossEntropyLoss"]],
-        trainer_config=TrainerConfig(
+        metric_nodes=metric_nodes,
+        monitors=monitors,
+        training_config=TrainingConfig(
             max_epochs=epochs,
             accelerator=accelerator,
             devices=1,
             enable_progress_bar=False,
             log_every_n_steps=1,
-            enable_checkpointing=False,
+            enable_checkpointing=save_best_val,
+            gradient_clip_val=gradient_clip_val,
             # val_every=0: point past the last epoch so Lightning never validates.
             check_val_every_n_epoch=val_every if val_every > 0 else epochs + 1,
+            optimizer=OptimizerConfig(name="adam", lr=lr),
         ),
-        optimizer_config=OptimizerConfig(name="adam", lr=lr),
-        callbacks=[EpochLog()],
+        callbacks=callbacks,
     )
     t0 = time.monotonic()
     trainer.fit()
     t_grad = time.monotonic() - t0
-    val_metrics = trainer.validate() if val_every > 0 else None
+    # With save_best_val, validate on the best checkpoint — this reloads the best-val_loss weights
+    # into the pipeline so the saved artifact is the best epoch, not the last.
+    if save_best_val:
+        val_metrics = trainer.validate(ckpt_path="best")
+    elif val_every > 0:
+        val_metrics = trainer.validate()
+    else:
+        val_metrics = None
 
     artifact = out / "pipeline.yaml"
     pipeline.save_to_file(
@@ -293,7 +389,8 @@ def train(
         save_weights=True,
         metadata=PipelineMetadata(
             name=pipeline.name,
-            description="Two-phase-trained lentils segmentation pipeline",
+            description="Two-phase-trained lentils segmentation pipeline"
+            + (" (best val_loss checkpoint)" if save_best_val else ""),
         ),
     )
     run = {
@@ -402,20 +499,25 @@ def auroc(scores: np.ndarray, labels: np.ndarray) -> float:
     return (ranks[labels].sum() - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
 
 
-def split_frames(splits_csv: str | Path, split: str = "test") -> list[str]:
-    """Unique npz paths of a split, in CSV order (repeat rows deduplicated)."""
-    rows = list(csv.DictReader(open(splits_csv)))
-    seen: set[str] = set()
-    return [
-        r["npz_path"]
-        for r in rows
-        if r["split"] == split and not (r["npz_path"] in seen or seen.add(r["npz_path"]))
-    ]
+def split_frames(
+    universe_csv: str | Path, splits_json: str | Path, split: str = "test"
+) -> list[str]:
+    """Unique npz paths of a split, resolved from the universe.csv + splits.json.
+
+    Uses the datamodule's own selector resolution so the frames evaluated are
+    exactly those the trainer would load (minus train ``samples_per_frame``
+    multiplicity, which never touches val/test).
+    """
+    dm = make_datamodule(universe_csv, splits_json, batch_size=1, num_workers=0)
+    dm.setup(stage=None)
+    ds = {"train": dm.train_ds, "val": dm.val_ds, "test": dm.test_ds}.get(split)
+    return [rec["materialized_path"] for rec in ds.rows] if ds is not None else []
 
 
 def evaluate(
     pipeline: CuvisPipeline,
-    splits_csv: str | Path,
+    universe_csv: str | Path,
+    splits_json: str | Path,
     *,
     split: str = "test",
     tile_overlap: float | None = None,
@@ -441,7 +543,7 @@ def evaluate(
     device = next(iter(net.parameters())).device
     infer = Context(stage=ExecutionStage.INFERENCE, batch_idx=0, global_step=0)
 
-    frames = split_frames(splits_csv, split)
+    frames = split_frames(universe_csv, splits_json, split)
     if max_frames:
         frames = frames[:max_frames]
 
@@ -483,7 +585,8 @@ def evaluate(
 
 def profile(
     pipeline: CuvisPipeline,
-    splits_csv: str | Path,
+    universe_csv: str | Path,
+    splits_json: str | Path,
     *,
     split: str = "test",
     frames: int = 8,
@@ -506,7 +609,7 @@ def profile(
             n.execution_stages = set()
     device = next(iter(net.parameters())).device
 
-    paths = split_frames(splits_csv, split)[:frames]
+    paths = split_frames(universe_csv, splits_json, split)[:frames]
     batches, load_ms = [], []
     for p in paths:
         t0 = time.perf_counter()

@@ -1,30 +1,56 @@
-"""Generate a train/val/test splits CSV over local lentils npz frames.
+"""Convert a legacy lentils split CSV into the dataloader data-spec.
 
-Two schemes:
+The multi-npz datamodule (``npz_multi``) is driven by two artifacts:
 
-- ``stratified-all`` (default): every frame participates; foreground frames
-  (mask has any nonzero pixel) and normal frames are each split by ``--fracs``
-  and combined, so the model sees both object and clean-frame appearance.
-  Normal frames carry an all-zero mask (a valid background target); the
-  fg-biased crop falls back to uniform crops on them.
-- ``labeled-only``: only frames with foreground, for quick supervised smokes.
+* a ``universe.csv`` (``source, index, materialized_path``): one row per frame,
+  mapping the logical identity ``(source, index)`` to the physical ``.npz``.  ``source`` is
+  the cu3s origin baked into each npz (``source_cu3s``), normalized to its
+  dataset-relative form (the path tail after ``/data/``) so selectors are clean
+  and machine-independent; ``index`` is the read position (== COCO image_id).
+* a committable ``splits.json`` (a ``DataSplitConfig``): per-source
+  ``FILE_INDICES`` selectors that pick each stage's frames by ``(source, index)``.
 
-Train rows are repeated ``--repeat`` times: each duplicate is one more
-independent fg-biased crop of that frame per epoch (the patches-per-frame
-multiplicity used by the champion runs). Val/test rows are never repeated.
+This tool ingests the legacy ``(split, npz_path, image_id)`` CSV and emits both,
+preserving the *exact* split assignment. Legacy train rows may be repeated (the
+old patches-per-frame trick); that multiplicity is now ``samples_per_frame`` at
+the datamodule, so the universe holds unique frames only. Selector construction
+reuses the dataloader's own ``selectors_from_refs`` so the result is byte-for-byte
+what ``resolve-splits`` would produce from the equivalent cu3s CSV.
 
-    python gen_splits.py --npz-dir /data/lentils_npz --repeat 4 --out splits.csv
+    python gen_splits.py --from-legacy-csv lentils_seg_splits_adaclip.csv \
+        --out-universe lentils_universe.csv \
+        --out-splits lentils_adaclip.splits.json
+
+Regenerate the machine-specific ``universe.csv`` on any host with the same npz;
+commit only the portable ``splits.json``.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import glob
-import os
-import random
+from collections import OrderedDict
+from pathlib import Path
 
 import numpy as np
+
+_STAGES = ("train", "val", "test")
+
+
+def _normalize_source(source_cu3s: str) -> str:
+    """cu3s origin -> clean dataset-relative identity (the tail after the last ``/data/``).
+
+    Splits on the *last* ``/data/`` so an absolute HF-cache path
+    ``/mnt/data/.../snapshots/<hash>/data/day2/<ts>.cu3s`` collapses to the stable,
+    machine- and snapshot-independent ``day2/<ts>.cu3s`` (not the ``/mnt/data/`` tail).
+    """
+    s = str(source_cu3s).replace("\\", "/")
+    marker = "/data/"
+    if marker not in s:
+        raise ValueError(
+            f"source_cu3s {s!r} has no '/data/' segment; cannot derive a stable identity"
+        )
+    return s.rsplit(marker, 1)[-1]
 
 
 def main() -> None:
@@ -32,74 +58,122 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "--npz-dir", required=True, help="directory of per-frame .npz files (cube + mask)"
+        "--from-legacy-csv",
+        required=True,
+        help="legacy split CSV with columns (split, npz_path, image_id)",
     )
-    ap.add_argument("--out", required=True, help="output CSV path (split,npz_path,image_id)")
+    ap.add_argument("--out-universe", required=True, help="output universe.csv path")
+    ap.add_argument("--out-splits", required=True, help="output splits.json path")
     ap.add_argument(
-        "--scheme", default="stratified-all", choices=["stratified-all", "labeled-only"]
+        "--relative-paths",
+        action="store_true",
+        help="write universe paths relative to the universe.csv dir (default: absolute)",
     )
-    ap.add_argument(
-        "--fracs",
-        type=float,
-        nargs=2,
-        default=[0.6, 0.2],
-        metavar=("TRAIN", "VAL"),
-        help="train/val fractions; the remainder is test",
-    )
-    ap.add_argument(
-        "--repeat",
-        type=int,
-        default=4,
-        help="duplicate each TRAIN row N times (N independent crops per frame per epoch)",
-    )
-    ap.add_argument("--max-frames", type=int, default=0, help="0 = all frames")
-    ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    files = sorted(glob.glob(os.path.join(args.npz_dir, "*.npz")))
-    if args.max_frames:
-        files = files[: args.max_frames]
-    if not files:
-        raise SystemExit(f"no .npz files under {args.npz_dir}")
+    rows = list(csv.DictReader(open(args.from_legacy_csv, encoding="utf-8")))
+    if not rows:
+        raise SystemExit(f"{args.from_legacy_csv}: no rows")
 
-    fg, bg = [], []
-    for f in files:
-        z = np.load(f)
-        has_fg = "mask" in z.files and bool((z["mask"] != 0).any())
-        (fg if has_fg else bg).append(f)
+    # Dedup to unique frames (collapse the legacy train-row repetition), asserting
+    # each npz maps to exactly one split and one image_id.
+    frames: OrderedDict[str, dict] = OrderedDict()
+    for r in rows:
+        npz = r["npz_path"]
+        prev = frames.get(npz)
+        if prev is None:
+            frames[npz] = {"split": r["split"], "image_id": int(r["image_id"])}
+        elif prev["split"] != r["split"] or prev["image_id"] != int(r["image_id"]):
+            raise SystemExit(
+                f"{npz}: inconsistent legacy rows "
+                f"({prev} vs split={r['split']} image_id={r['image_id']})"
+            )
 
-    rng = random.Random(args.seed)
-    rng.shuffle(fg)
-    rng.shuffle(bg)
-    strata = [fg] if args.scheme == "labeled-only" else [fg, bg]
+    out_universe = Path(args.out_universe).resolve()
+    csv_dir = out_universe.parent
 
-    def split3(lst: list[str]) -> tuple[list[str], list[str], list[str]]:
-        n = len(lst)
-        ntr, nval = int(n * args.fracs[0]), int(n * args.fracs[1])
-        return lst[:ntr], lst[ntr : ntr + nval], lst[ntr + nval :]
+    # Build universe records: read the cu3s identity from each npz.
+    records: list[dict] = []
+    seen_identity: set[tuple[str, int]] = set()
+    stage_pairs: dict[str, list[tuple[str, int]]] = {s: [] for s in _STAGES}
+    for npz, meta in frames.items():
+        npz_path = Path(npz).resolve()
+        with np.load(npz_path) as z:
+            if "source_cu3s" not in z.files:
+                raise SystemExit(f"{npz_path}: npz has no 'source_cu3s' key")
+            source = _normalize_source(np.asarray(z["source_cu3s"]).item())
+        index = meta["image_id"]
+        identity = (source, index)
+        if identity in seen_identity:
+            raise SystemExit(f"duplicate identity {identity} across frames")
+        seen_identity.add(identity)
+        stored = str(npz_path)
+        if args.relative_paths:
+            stored = str(Path(npz_path).relative_to(csv_dir))
+        records.append({"source": source, "index": index, "materialized_path": stored})
+        if meta["split"] in stage_pairs:
+            stage_pairs[meta["split"]].append(identity)
 
-    rows = []
-    fid = 0
-    counts = {"train": 0, "val": 0, "test": 0}
-    for stratum in strata:
-        tr, va, te = split3(stratum)
-        for grp, name in ((tr, "train"), (va, "val"), (te, "test")):
-            for f in grp:
-                reps = args.repeat if name == "train" else 1
-                for _ in range(reps):
-                    rows.append((name, f, fid))
-                counts[name] += 1
-                fid += 1
+    records.sort(key=lambda rec: (rec["source"], rec["index"]))
 
-    with open(args.out, "w", newline="", encoding="utf-8") as fh:
-        w = csv.writer(fh)
-        w.writerow(["split", "npz_path", "image_id"])
-        w.writerows(rows)
+    out_universe.parent.mkdir(parents=True, exist_ok=True)
+    with out_universe.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=["source", "index", "materialized_path"])
+        w.writeheader()
+        w.writerows(records)
 
-    print(f"wrote {args.out}")
-    print(f"  frames: {len(files)} (fg={len(fg)} normal={len(bg)}, scheme={args.scheme})")
-    print(f"  split frames: train={counts['train']} val={counts['val']} test={counts['test']}")
-    print(f"  train rows (x{args.repeat}): {sum(1 for r in rows if r[0] == 'train')}")
+    # Build the split config from per-stage identities, reusing the dataloader's
+    # canonical selector construction (per-source FILE_INDICES, sorted + deduped).
+    from cuvis_ai_dataloader.data.resolvers import selectors_from_refs
+    from cuvis_ai_schemas.training.data import DataSplitConfig, SampleRef
+
+    def selectors(pairs: list[tuple[str, int]]):
+        refs = [SampleRef(source=s, index=i, label_id=i) for s, i in pairs]
+        return selectors_from_refs(refs)
+
+    config = DataSplitConfig(
+        train=selectors(stage_pairs["train"]),
+        val=selectors(stage_pairs["val"]),
+        test=selectors(stage_pairs["test"]),
+        # predict mirrors test so a Predictor pass (predict split) evaluates the test frames --
+        # the same convention as convert_split_manifest's predict_from="test".
+        predict=selectors(stage_pairs["test"]),
+        leakage_check="error",
+    )
+
+    from cuvis_ai_core.data.splits_io import save_splits
+
+    save_splits(config, args.out_splits)
+
+    print(f"wrote {out_universe}: {len(records)} frames, {len(seen_identity)} identities")
+    print(
+        f"wrote {args.out_splits}: "
+        f"train={len(config.train)} val={len(config.val)} test={len(config.test)} selectors "
+        f"(frames: train={len(stage_pairs['train'])} val={len(stage_pairs['val'])} "
+        f"test={len(stage_pairs['test'])})"
+    )
+
+    _validate(out_universe, args.out_splits, stage_pairs)
+
+
+def _validate(universe_csv: Path, splits_json: str, stage_pairs: dict) -> None:
+    """Round-trip: instantiate the datamodule, resolve, assert per-stage counts."""
+    from cuvis_ai_core.data.splits_io import load_splits
+    from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
+
+    dm = MultiNpzDataModule(
+        universe_csv=str(universe_csv), splits=load_splits(splits_json), num_workers=0
+    )
+    dm.setup(stage=None)
+    got = {
+        "train": len(dm.train_ds) if dm.train_ds else 0,
+        "val": len(dm.val_ds) if dm.val_ds else 0,
+        "test": len(dm.test_ds) if dm.test_ds else 0,
+    }
+    want = {s: len(stage_pairs[s]) for s in _STAGES}
+    if got != want:
+        raise SystemExit(f"round-trip mismatch: resolved {got} != expected {want}")
+    print(f"round-trip OK: resolved {got} frames per stage (leakage check passed)")
 
 
 if __name__ == "__main__":
