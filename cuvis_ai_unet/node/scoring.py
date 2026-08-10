@@ -101,8 +101,16 @@ class SegmentationAnomalyScore(Node):
         scores = probs[..., 1:].sum(dim=-1, keepdim=True)
         batch = scores.shape[0]
         flat = scores.reshape(batch, -1)
-        k = max(1, int(self.top_frac * flat.shape[1]))
-        anomaly_score = flat.topk(k, dim=1).values.mean(dim=1)
+        # Mean of the top `top_frac` fraction of pixels, via the ascending-sort
+        # quantile floor `k = clamp(int((1 - top_frac) * N), 0, N - 1)` and the mean
+        # of `flat[k:]`. This is the integer-floor convention shared with
+        # `cuvis_ai_rfdetr.functional.top_frac_mean`, so a segmentation and a
+        # detection head scored side by side use the identical image-score rule
+        # (e.g. exactly the top 400 pixels of a 987x405 map at top_frac=0.001).
+        n = flat.shape[1]
+        k = min(max(int((1.0 - self.top_frac) * n), 0), n - 1)
+        sorted_scores, _ = torch.sort(flat, dim=1)
+        anomaly_score = sorted_scores[:, k:].mean(dim=1)
         out: dict[str, Tensor] = {
             "scores": scores.contiguous(),
             "anomaly_score": anomaly_score.contiguous(),

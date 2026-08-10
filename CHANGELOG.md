@@ -21,8 +21,11 @@
 - Added `SegmentationAnomalyScore` node (`cuvis_ai_unet.node.scoring`): adapts per-pixel
   segmentation logits into anomaly-detection inputs — a foreground-probability map, a per-image
   score (mean of the top-`top_frac` score pixels, default 0.1 %), and, when an integer `targets`
-  mask is connected, a boolean foreground mask for a paired AUROC node. `targets` is optional so
-  the node also serves inference-time thresholding; default stages are VAL/TEST/INFERENCE.
+  mask is connected, a boolean foreground mask for a paired AUROC node. The per-image reduction
+  uses the integer-floor quantile convention `k = int((1 - top_frac) * N)`, mean of `flat[k:]`,
+  identical to `cuvis_ai_rfdetr.functional.top_frac_mean`, so a segmentation and a detection head
+  scored side by side use the same image-score rule. `targets` is optional so the node also serves
+  inference-time thresholding; default stages are VAL/TEST/INFERENCE.
 - Added `RandomForegroundBiasedCrop` transform (vendored from a pending cuvis-ai-augment change;
   removed here once it ships upstream).
 - Added the lentils segmentation example suite: shared engine plus `train.py` / `evaluate.py` /
