@@ -144,3 +144,63 @@ class CrossEntropyLoss(_SegmentationLoss):
             logits_bchw, targets_bhw, weight=weights, ignore_index=self.ignore_index
         )
         return {"loss": self.weight * loss}
+
+
+class OHEMCrossEntropyLoss(_SegmentationLoss):
+    """Cross-entropy with online hard-example mining (OHEM) on the background.
+
+    Keeps **all** foreground pixels (class index ``> 0``) plus the hardest
+    background pixels — the top ``k = clamp(ratio * n_fg, min_kept, n_bg)`` by
+    per-pixel loss — and averages cross-entropy over that kept set only. This
+    forces the model to learn the normal-background pixels it currently over-fires
+    on, instead of letting the overwhelming easy-background majority average the
+    signal away. When a batch has no foreground the ``min_kept`` floor still mines
+    the hardest ``min_kept`` background pixels; if nothing can be kept the loss
+    falls back to the plain per-pixel mean.
+
+    Parameters
+    ----------
+    weight
+        Scalar multiplier applied to the loss (for combining several losses).
+    ratio
+        Number of hard background pixels to keep per foreground pixel.
+    min_kept
+        Lower bound on the number of background pixels kept, so batches with few
+        or no foreground pixels still contribute a meaningful gradient.
+    """
+
+    INPUT_SPECS = {"logits": _LOGITS_SPEC, "targets": _TARGETS_SPEC}
+    OUTPUT_SPECS = {"loss": _LOSS_OUT_SPEC}
+
+    def __init__(
+        self,
+        weight: float = 1.0,
+        ratio: float = 3.0,
+        min_kept: int = 4096,
+        **kwargs: Any,
+    ) -> None:
+        self.weight = float(weight)
+        self.ratio = float(ratio)
+        self.min_kept = int(min_kept)
+        super().__init__(
+            weight=self.weight,
+            ratio=self.ratio,
+            min_kept=self.min_kept,
+            **kwargs,
+        )
+
+    def forward(self, logits: Tensor, targets: Tensor, **_: Any) -> dict[str, Tensor]:
+        """Compute the weighted OHEM cross-entropy from BHWC logits and a mask."""
+        logits_bchw, targets_bhw = to_bchw_targets(logits, targets)
+        per_pixel = F.cross_entropy(logits_bchw, targets_bhw, reduction="none")
+        fg = targets_bhw > 0
+        n_fg = int(fg.sum())
+        bg_losses = per_pixel[~fg]
+        k = min(max(int(self.ratio * max(n_fg, 1)), self.min_kept), int(bg_losses.numel()))
+        parts = []
+        if n_fg > 0:
+            parts.append(per_pixel[fg])
+        if k > 0:
+            parts.append(torch.topk(bg_losses, k).values)
+        loss = torch.cat(parts).mean() if parts else per_pixel.mean()
+        return {"loss": self.weight * loss}

@@ -13,6 +13,16 @@
 - Added `DiceLoss` and `CrossEntropyLoss` segmentation loss nodes (binary and multiclass, BHWC
   logits). These are planned to migrate into cuvis-ai's builtin loss library; the plugin copies
   will be removed in a later minor release once that lands.
+- Added `OHEMCrossEntropyLoss` segmentation loss node: cross-entropy with online hard-example
+  mining on the background — keeps all foreground pixels plus the hardest `clamp(ratio * n_fg,
+  min_kept, n_bg)` background pixels, so the strong easy-background majority cannot average away
+  the signal on hard normal pixels. Same migration path as `DiceLoss`/`CrossEntropyLoss`: it will
+  move into cuvis-ai's builtin loss library alongside them once that lands (see cuvis-ai#58).
+- Added `SegmentationAnomalyScore` node (`cuvis_ai_unet.node.scoring`): adapts per-pixel
+  segmentation logits into anomaly-detection inputs — a foreground-probability map, a per-image
+  score (mean of the top-`top_frac` score pixels, default 0.1 %), and, when an integer `targets`
+  mask is connected, a boolean foreground mask for a paired AUROC node. `targets` is optional so
+  the node also serves inference-time thresholding; default stages are VAL/TEST/INFERENCE.
 - Added `RandomForegroundBiasedCrop` transform (vendored from a pending cuvis-ai-augment change;
   removed here once it ships upstream).
 - Added the lentils segmentation example suite: shared engine plus `train.py` / `evaluate.py` /

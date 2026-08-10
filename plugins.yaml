@@ -14,7 +14,9 @@ capabilities:
   - class_name: cuvis_ai_unet.node.dynunet.DynUNet
   - class_name: cuvis_ai_unet.node.losses.DiceLoss
   - class_name: cuvis_ai_unet.node.losses.CrossEntropyLoss
+  - class_name: cuvis_ai_unet.node.losses.OHEMCrossEntropyLoss
   - class_name: cuvis_ai_unet.node.seg_metrics.SegMetrics
+  - class_name: cuvis_ai_unet.node.scoring.SegmentationAnomalyScore
 
 # --- Git-tag source (use INSTEAD of `path:` for a frozen install) -----------
 # name: unet
@@ -25,4 +27,6 @@ capabilities:
 #   - class_name: cuvis_ai_unet.node.dynunet.DynUNet
 #   - class_name: cuvis_ai_unet.node.losses.DiceLoss
 #   - class_name: cuvis_ai_unet.node.losses.CrossEntropyLoss
+#   - class_name: cuvis_ai_unet.node.losses.OHEMCrossEntropyLoss
 #   - class_name: cuvis_ai_unet.node.seg_metrics.SegMetrics
+#   - class_name: cuvis_ai_unet.node.scoring.SegmentationAnomalyScore

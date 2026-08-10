@@ -14,7 +14,11 @@ from cuvis_ai_schemas.execution import Context  # noqa: E402
 
 import cuvis_ai_unet.node.dynunet as dynunet_module  # noqa: E402
 from cuvis_ai_unet.node.dynunet import DynUNet  # noqa: E402
-from cuvis_ai_unet.node.losses import CrossEntropyLoss, DiceLoss  # noqa: E402
+from cuvis_ai_unet.node.losses import (  # noqa: E402
+    CrossEntropyLoss,
+    DiceLoss,
+    OHEMCrossEntropyLoss,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -120,7 +124,7 @@ def test_bottleneck_and_depth_warnings() -> None:
         )  # depth grid 4 > 3 bands
 
 
-@pytest.mark.parametrize("loss_cls", [DiceLoss, CrossEntropyLoss])
+@pytest.mark.parametrize("loss_cls", [DiceLoss, CrossEntropyLoss, OHEMCrossEntropyLoss])
 def test_loss_nodes(loss_cls: type) -> None:
     node = _node()
     logits = node.forward(torch.randn(B, H, W, BANDS))["logits"]
@@ -141,3 +145,44 @@ def test_binary_target_single_logit() -> None:
     targets = (torch.rand(B, H, W, 1) > 0.5).long()
     loss = DiceLoss().forward(logits, targets)["loss"]
     assert loss.dim() == 0
+
+
+def test_ohem_equals_plain_ce_when_all_pixels_kept() -> None:
+    # ratio + min_kept large enough to keep every background pixel -> OHEM averages
+    # over all pixels, which is exactly plain cross-entropy mean reduction.
+    import torch.nn.functional as F
+
+    torch.manual_seed(0)
+    logits = torch.randn(B, H, W, K)
+    targets = torch.randint(0, K, (B, H, W))
+    ohem = OHEMCrossEntropyLoss(ratio=1e9, min_kept=B * H * W).forward(logits, targets)["loss"]
+    plain = F.cross_entropy(logits.permute(0, 3, 1, 2), targets.long())
+    assert torch.allclose(ohem, plain, atol=1e-6)
+
+
+def test_ohem_upweights_hard_background() -> None:
+    # Mostly-easy background with a few hard (wrong-but-confident) pixels: dropping the
+    # easy majority makes the OHEM mean strictly exceed the plain CE mean.
+    import torch.nn.functional as F
+
+    torch.manual_seed(1)
+    logits = torch.full((1, 8, 8, 2), 0.0)
+    logits[..., 0] = 8.0  # confident background everywhere (correct)
+    targets = torch.zeros(1, 8, 8, dtype=torch.long)
+    # make 4 pixels hard: model confidently predicts FG but they are background
+    logits[0, 0, :4, 0] = -8.0
+    logits[0, 0, :4, 1] = 8.0
+    ohem = OHEMCrossEntropyLoss(ratio=1.0, min_kept=4).forward(logits, targets)["loss"]
+    plain = F.cross_entropy(logits.permute(0, 3, 1, 2), targets)
+    assert ohem > plain
+
+
+def test_ohem_no_foreground_uses_min_kept() -> None:
+    node = _node()
+    logits = node.forward(torch.randn(B, H, W, BANDS))["logits"]
+    targets = torch.zeros(B, H, W, dtype=torch.int32)  # all background
+    loss = OHEMCrossEntropyLoss(min_kept=16).forward(logits, targets)["loss"]
+    assert loss.dim() == 0 and torch.isfinite(loss)
+    node.zero_grad()
+    loss.backward()
+    assert sum(p.grad.abs().sum().item() for p in node.parameters() if p.grad is not None) > 0
