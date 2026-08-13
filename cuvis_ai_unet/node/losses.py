@@ -167,6 +167,10 @@ class OHEMCrossEntropyLoss(_SegmentationLoss):
     min_kept
         Lower bound on the number of background pixels kept, so batches with few
         or no foreground pixels still contribute a meaningful gradient.
+    ignore_index
+        Target value marking void pixels (this codebase's convention: ``255``).
+        Void pixels are excluded from the loss, from the foreground/background
+        partition, and from the mined kept set.
     """
 
     INPUT_SPECS = {"logits": _LOGITS_SPEC, "targets": _TARGETS_SPEC}
@@ -177,25 +181,34 @@ class OHEMCrossEntropyLoss(_SegmentationLoss):
         weight: float = 1.0,
         ratio: float = 3.0,
         min_kept: int = 4096,
+        ignore_index: int = -100,
         **kwargs: Any,
     ) -> None:
         self.weight = float(weight)
         self.ratio = float(ratio)
         self.min_kept = int(min_kept)
+        self.ignore_index = int(ignore_index)
         super().__init__(
             weight=self.weight,
             ratio=self.ratio,
             min_kept=self.min_kept,
+            ignore_index=self.ignore_index,
             **kwargs,
         )
 
     def forward(self, logits: Tensor, targets: Tensor, **_: Any) -> dict[str, Tensor]:
         """Compute the weighted OHEM cross-entropy from BHWC logits and a mask."""
         logits_bchw, targets_bhw = to_bchw_targets(logits, targets)
-        per_pixel = F.cross_entropy(logits_bchw, targets_bhw, reduction="none")
-        fg = targets_bhw > 0
+        per_pixel = F.cross_entropy(
+            logits_bchw, targets_bhw, reduction="none", ignore_index=self.ignore_index
+        )
+        # Void pixels are excluded everywhere: not foreground, not minable
+        # background (their per-pixel loss is 0.0 and would dilute the kept set
+        # whenever k clamps to the pool size, e.g. small crops).
+        valid = targets_bhw != self.ignore_index
+        fg = (targets_bhw > 0) & valid
         n_fg = int(fg.sum())
-        bg_losses = per_pixel[~fg]
+        bg_losses = per_pixel[(~fg) & valid]
         k = min(max(int(self.ratio * max(n_fg, 1)), self.min_kept), int(bg_losses.numel()))
         parts = []
         if n_fg > 0:

@@ -92,3 +92,31 @@ def test_invalid_top_frac_raises() -> None:
 def test_rejects_execution_stages_override() -> None:
     with pytest.raises(AssertionError):
         SegmentationAnomalyScore(execution_stages={ExecutionStage.TRAIN})
+
+
+def test_k1_binary_logits_score_with_sigmoid() -> None:
+    # K == 1 (sigmoid-binary mode, as soft_dice_loss supports): softmax would be
+    # constantly 1.0 and the [..., 1:] slice empty -> silent zeros. Must be sigmoid.
+    torch.manual_seed(0)
+    logits = torch.randn(2, 6, 5, 1)
+    out = SegmentationAnomalyScore(top_frac=0.5).forward(logits)
+    assert torch.allclose(out["scores"], torch.sigmoid(logits))
+    assert out["scores"].shape == (2, 6, 5, 1)
+    assert (out["anomaly_score"] > 0).all()  # not the silent-zero failure mode
+
+    # per-image score follows the same top-frac rule on the sigmoid map
+    flat = torch.sigmoid(logits).reshape(2, -1)
+    n = flat.shape[1]
+    k = min(max(int(0.5 * n), 0), n - 1)
+    expected = torch.sort(flat, dim=1).values[:, k:].mean(dim=1)
+    assert torch.allclose(out["anomaly_score"], expected)
+
+
+def test_k2_scores_are_exactly_softmax_foreground() -> None:
+    # Regression guard for the certified K >= 2 path: byte-identical to the
+    # softmax-sum reference (the K == 1 branch must not perturb it).
+    torch.manual_seed(1)
+    logits = torch.randn(3, 7, 4, 2)
+    out = SegmentationAnomalyScore().forward(logits)
+    reference = torch.softmax(logits.float(), dim=-1)[..., 1:].sum(dim=-1, keepdim=True)
+    assert torch.equal(out["scores"], reference)

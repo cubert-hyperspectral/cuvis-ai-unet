@@ -3,8 +3,9 @@
 `SegmentationAnomalyScore` turns a segmentation head's per-pixel class logits into
 the inputs an anomaly-detection metric (e.g. an image/pixel AUROC node) expects:
 
-* ``scores`` — a per-pixel foreground-probability map (softmax over classes, summed
-  over the non-background classes ``>= 1``; for the binary case this is class 1).
+* ``scores`` — a per-pixel foreground-probability map (``K >= 2``: softmax summed over
+  the non-background classes ``>= 1``; ``K == 1``: sigmoid of the single binary logit,
+  matching this plugin's ``soft_dice_loss`` binary mode).
 * ``anomaly_score`` — a per-image scalar: the mean of the top ``top_frac`` fraction
   of score pixels (default 0.1 %). Averaging the most-anomalous pixels rather than
   taking a single max makes the image score robust to lone hot pixels while still
@@ -96,9 +97,15 @@ class SegmentationAnomalyScore(Node):
         targets: Tensor | None = None,
         **_: Any,
     ) -> dict[str, Tensor]:
-        probs = torch.softmax(logits.float(), dim=-1)
-        # Foreground probability = sum over non-background classes (binary: class 1).
-        scores = probs[..., 1:].sum(dim=-1, keepdim=True)
+        if logits.shape[-1] == 1:
+            # Sigmoid-binary logits (K == 1, the mode soft_dice_loss documents):
+            # softmax over one channel is constantly 1.0 and the [..., 1:] slice
+            # would be empty — score with the sigmoid foreground probability.
+            scores = torch.sigmoid(logits.float())
+        else:
+            probs = torch.softmax(logits.float(), dim=-1)
+            # Foreground probability = sum over non-background classes (binary: class 1).
+            scores = probs[..., 1:].sum(dim=-1, keepdim=True)
         batch = scores.shape[0]
         flat = scores.reshape(batch, -1)
         # Mean of the top `top_frac` fraction of pixels, via the ascending-sort
