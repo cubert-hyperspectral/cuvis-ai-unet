@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-14
+
 ### Added
 - Added `DynUNet` node — a pure-PyTorch reimplementation of MONAI DynUNet's dynamic topology
   (per-stage kernel/stride lists, basic or residual double-conv blocks, InstanceNorm + LeakyReLU)
