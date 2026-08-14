@@ -16,5 +16,12 @@ def test_manifest_loads_and_registers_nodes() -> None:
     registry = NodeRegistry()
     registry.register_plugin(str(MANIFEST))
     assert "unet" in registry.list_plugins()
-    for cls_name in ("DynUNet", "DiceLoss", "CrossEntropyLoss"):
+    for cls_name in (
+        "DynUNet",
+        "DiceLoss",
+        "CrossEntropyLoss",
+        "OHEMCrossEntropyLoss",
+        "SegMetrics",
+        "SegmentationAnomalyScore",
+    ):
         assert registry.get(cls_name) is not None, f"{cls_name} not resolvable from the manifest"
