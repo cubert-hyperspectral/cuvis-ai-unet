@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 0.2.1 - 2026-08-20
+
+### Changed
+- Documented the torch cu128 index tables as local-development-only: installs of this package as
+  a git or registry dependency never read them, the committed lock is resolved without these
+  sources, and composed child environments mirror the host's torch build
+  (cuvis-ai-core >= 0.12.1). Corrected the torchvision dependency comment that claimed the cu128
+  override binds for dependency installs.
+
 ## [0.2.0] - 2026-08-14
 
 ### Added

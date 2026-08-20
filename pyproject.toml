@@ -39,7 +39,10 @@ dependencies = [
   "cuvis-ai-core>=0.11.0",
   "cuvis-ai-schemas>=0.8.0",
   "torch>=2.1",
-  "torchvision",  # transitively required (cuvis-ai-core); declared so its cu128 source override binds
+  # torchvision is declared directly so the local-dev cu128 source pin below can bind when
+  # re-locking with sources; composed child environments receive the host-mirrored build
+  # (cuvis-ai-core >= 0.12.1).
+  "torchvision",
 ]
 # cuvis-ai-augment is intentionally NOT a dependency: only the vendored
 # transforms module touches it, and that module is imported exclusively through
@@ -90,6 +93,11 @@ version_scheme = "post-release"
 local_scheme = "node-and-date"
 fallback_version = "0.1.0"
 
+# Local development only: pins this repo's own venv (where this pyproject is the
+# resolution root) to CUDA torch. Installs of this package as a git or registry
+# dependency never read these tables; the orchestrator (cuvis-ai-core >= 0.12.1)
+# mirrors the host's installed torch build into each composed child env instead.
+# The committed uv.lock is resolved without these sources; they bind only on a re-lock.
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
 # torchvision MUST come from the same cu128 index as torch, or the prebuilt ops
