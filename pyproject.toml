@@ -39,9 +39,9 @@ dependencies = [
   "cuvis-ai-core>=0.11.0",
   "cuvis-ai-schemas>=0.8.0",
   "torch>=2.1",
-  # torchvision is declared directly so the local-dev cu128 source pin below can bind when
-  # re-locking with sources; composed child environments receive the host-mirrored build
-  # (cuvis-ai-core >= 0.12.1).
+  # torchvision is declared directly so the cuda-group cu128 source pin below keeps the
+  # torch/torchvision pair same-build in this checkout; composed child environments receive
+  # the host-mirrored build (cuvis-ai-core >= 0.12.1).
   "torchvision",
 ]
 # cuvis-ai-augment is intentionally NOT a dependency: only the vendored
@@ -93,16 +93,26 @@ version_scheme = "post-release"
 local_scheme = "node-and-date"
 fallback_version = "0.1.0"
 
-# Local development only: pins this repo's own venv (where this pyproject is the
-# resolution root) to CUDA torch. Installs of this package as a git or registry
-# dependency never read these tables; the orchestrator (cuvis-ai-core >= 0.12.1)
-# mirrors the host's installed torch build into each composed child env instead.
-# The committed uv.lock is resolved without these sources; they bind only on a re-lock.
+[tool.uv]
+default-groups = ["cuda"]
+
+[dependency-groups]
+# Floors live in [project].dependencies; this group only carries the cu128 index pin.
+# torchvision rides along so the torch/torchvision pair stays ABI-matched (same-build)
+# in this checkout - a cu128 torch next to a PyPI torchvision dies with
+# "operator torchvision::nms does not exist".
+cuda = ["torch", "torchvision"]
+
+# The cu128 pin is scoped to the `cuda` dependency group (installed by default here)
+# because uv also reads a git or path dependency's `[tool.uv.sources]`: an unscoped
+# `torch = { index = ... }` reaches every composed child environment that pulls this
+# repo from git and collides with the host-mirrored torch index there (cu130 on a
+# Jetson Thor host, cpu on a CPU-only host). Consumers never install a dependency's
+# groups, so the scoped pin binds nothing outside this checkout. On an aarch64
+# checkout, sync without the pin: `uv sync --no-default-groups`.
 [tool.uv.sources]
-torch = { index = "pytorch-cu128" }
-# torchvision MUST come from the same cu128 index as torch, or the prebuilt ops
-# (torchvision::nms) mismatch torch's ABI at import.
-torchvision = { index = "pytorch-cu128" }
+torch = { index = "pytorch-cu128", group = "cuda" }
+torchvision = { index = "pytorch-cu128", group = "cuda" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"

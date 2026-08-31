@@ -24,12 +24,13 @@ jobs:
         with:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@v3
-      # --no-sources ignores the [tool.uv.sources] cu128 index (CI is CPU-only); --locked uses the
-      # committed uv.lock (generated with --no-sources) so CI is reproducible. `-m "not slow"` keeps
-      # the `integration` manifest-loading smoke test on (the skill's required verification step).
+      # --locked uses the committed uv.lock, which is resolved with the group-scoped cu128
+      # source (the default `cuda` group pins torch to the cu128 index for this checkout only;
+      # consumers never install it). `-m "not slow"` keeps the `integration` manifest-loading
+      # smoke test on (the skill's required verification step).
       - name: Run tests
         run: |
-          uv run --no-sources --locked --extra dev pytest tests/ -m "not slow" -v --tb=long -ra \
+          uv run --locked --extra dev pytest tests/ -m "not slow" -v --tb=long -ra \
             --cov=cuvis_ai_unet \
             --cov-report=xml \
             --cov-report=term-missing \
@@ -53,9 +54,9 @@ jobs:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@v3
       - name: Check formatting
-        run: uv run --no-sources --locked --extra dev ruff format --check cuvis_ai_unet tests examples
+        run: uv run --locked --extra dev ruff format --check cuvis_ai_unet tests examples
       - name: Run ruff
-        run: uv run --no-sources --locked --extra dev ruff check cuvis_ai_unet tests examples
+        run: uv run --locked --extra dev ruff check cuvis_ai_unet tests examples
 
   typecheck:
     name: Type checking
@@ -68,7 +69,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       # Non-blocking: torch stubs are incomplete; surface issues without gating CI.
       - name: Run mypy
-        run: uv run --no-sources --locked --extra dev mypy cuvis_ai_unet/ --config-file pyproject.toml || true
+        run: uv run --locked --extra dev mypy cuvis_ai_unet/ --config-file pyproject.toml || true
 
   security:
     name: Security scanning
@@ -82,13 +83,13 @@ jobs:
       # Non-blocking: a transitive CVE we cannot patch without breaking compatibility must not
       # block a plugin PR — surface it, don't gate.
       - name: Run pip-audit
-        run: uv run --no-sources --locked --extra dev pip-audit --strict --desc on || true
+        run: uv run --locked --extra dev pip-audit --strict --desc on || true
       # Non-blocking (skill default): a Windows-authored baseline uses backslash paths that a Linux
       # runner's scan won't match, so gating here is fragile; surface findings without blocking.
       - name: Run detect-secrets
-        run: uv run --no-sources --locked --extra dev detect-secrets scan --baseline .secrets.baseline || true
+        run: uv run --locked --extra dev detect-secrets scan --baseline .secrets.baseline || true
       - name: Run bandit
-        run: uv run --no-sources --locked --extra dev bandit -r cuvis_ai_unet/ -c pyproject.toml || true
+        run: uv run --locked --extra dev bandit -r cuvis_ai_unet/ -c pyproject.toml || true
 
   build:
     name: Build and validate

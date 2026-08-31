@@ -19,9 +19,11 @@ jobs:
       - name: Install Python
         run: uv python install 3.11
       - name: Build
-        run: uv build
+        run: uv build --no-sources
       - name: Check distribution metadata
-        run: uv run --with twine twine check dist/*
+        # --no-sources: skip the cuda-group cu128 index so the release runner doesn't
+        # resolve GPU torch just to run twine.
+        run: uv run --no-sources --with twine twine check dist/*
       - name: Extract changelog section
         id: changelog
         shell: bash

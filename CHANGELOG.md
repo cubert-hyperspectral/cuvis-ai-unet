@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## 0.2.2 - 2026-08-31
+
+### Changed
+- Scoped the torch / torchvision cu128 index pin to a `cuda` dependency group (installed by
+  default in this checkout), matching cuvis-ai 0.13.4 and the dataloader v0.6.2 / augment v0.4.2 /
+  inspecscrap v0.2.4 / wafer-thickness v0.3.1 sweep. This corrects the 0.2.1 documentation: uv DOES
+  read a git dependency's `[tool.uv.sources]`, so the previous unscoped pin reached every composed
+  child environment that pulls this repo from git and collided with the host-mirrored torch index
+  on non-cu128 hosts (Jetson Thor cu130, CPU-only). Consumers never install a dependency's groups,
+  so the scoped pin binds nothing outside this checkout. The committed lock is now resolved with
+  the group source (torch 2.11.0+cu128, the cu128 index ceiling); CI `--locked` runs drop
+  `--no-sources` accordingly. On an aarch64 checkout, sync without the pin:
+  `uv sync --no-default-groups`. Base dependencies audited for aarch64 wheel coverage
+  (`uv pip compile --python-platform aarch64-manylinux_2_39 --only-binary :all:`): clean.
+
 ## 0.2.1 - 2026-08-20
 
 ### Changed
