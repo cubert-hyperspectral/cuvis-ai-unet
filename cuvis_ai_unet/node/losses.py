@@ -43,9 +43,11 @@ class _SegmentationLoss(Node):
         {NodeTag.SEGMENTATION, NodeTag.TRAINING, NodeTag.DIFFERENTIABLE, NodeTag.TORCH}
     )
 
+    # Declared on the class (cuvis-ai-core 0.14.1): a loss runs in train/val/test, never inference.
+    EXECUTION_STAGES = frozenset(_LOSS_STAGES)
+
     def __init__(self, **kwargs: Any) -> None:
-        assert "execution_stages" not in kwargs, "loss nodes fix their own execution stages"
-        super().__init__(execution_stages=_LOSS_STAGES, **kwargs)
+        super().__init__(**kwargs)
 
 
 class DiceLoss(_SegmentationLoss):

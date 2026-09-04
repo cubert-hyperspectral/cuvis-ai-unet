@@ -9,8 +9,9 @@ Why this is faithful — the full saved graph is loaded, but at inference only N
 DynUNet do work:
   - Augment is an identity passthrough when stage != TRAIN (shows as ~0 ms),
   - the loss nodes are TRAIN/VAL/TEST-only (absent from the inference profile),
-  - the file-reading DataSource is neutralized (execution_stages=set()) because we
-    inject cubes directly via the batch.
+  - the file-reading DataSource is dropped from the loaded config because we inject
+    cubes directly via the batch (stages are declared on the node class since
+    cuvis-ai-core 0.14.1, so a node cannot be switched off per instance).
 Frames are pre-loaded to the device so node timings are pure compute; disk read is
 measured once and reported separately. synchronize_cuda=True makes the profiler bracket
 each node.forward with a CUDA sync (accurate GPU wall-clock); skip_first_n discards
@@ -27,9 +28,11 @@ import argparse
 import csv
 import os
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
+import yaml
 from cuvis_ai_core.pipeline.pipeline import CuvisPipeline
 from cuvis_ai_core.utils.node_registry import NodeRegistry
 from cuvis_ai_schemas.enums import ExecutionStage
@@ -62,24 +65,45 @@ OVERLAPS = [float(x) for x in args.overlaps.split(",")]
 TILE_BATCHES = [int(x) for x in args.tile_batches.split(",")]
 
 
+def _config_without_node(config_yaml: str, node_name: str) -> Path:
+    """Sibling copy of the pipeline yaml without ``node_name`` and its connections."""
+    src = Path(config_yaml)
+    cfg = yaml.safe_load(src.read_text(encoding="utf-8"))
+    cfg["nodes"] = [n for n in cfg.get("nodes", []) if n.get("name") != node_name]
+    prefix = f"{node_name}."
+    cfg["connections"] = [
+        c
+        for c in cfg.get("connections", [])
+        if not (
+            str(c.get("source", "")).startswith(prefix)
+            or str(c.get("target", "")).startswith(prefix)
+        )
+    ]
+    out = src.with_name(f"{src.stem}.without-{node_name}{src.suffix}")
+    out.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    return out
+
+
 def main() -> None:
     reg = NodeRegistry()
     reg.register_plugin(UNET)
     reg.register_plugin(AUG)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    pipe = CuvisPipeline.load_pipeline(
-        CONFIG,
-        weights_path=WEIGHTS,
-        device=device,
-        strict_weight_loading=False,
-        node_registry=reg,
-    )
+    # Drop the file-reading source from the config; cubes come via the batch.
+    cfg_path = _config_without_node(CONFIG, "DataSource")
+    try:
+        pipe = CuvisPipeline.load_pipeline(
+            str(cfg_path),
+            weights_path=WEIGHTS,
+            device=device,
+            strict_weight_loading=False,
+            node_registry=reg,
+        )
+    finally:
+        cfg_path.unlink(missing_ok=True)
     nodes = {n.name: n for n in pipe.nodes}
     nodes["Norm"]._statistically_initialized = True
     net = nodes["DynUNet"]
-    for n in pipe.nodes:  # neutralize the file-reading source; cubes come via batch
-        if n.name == "DataSource":
-            n.execution_stages = set()
     for layer in pipe.torch_layers:
         layer.eval()
     runs = [n.name for n in pipe.nodes if n.should_execute(ExecutionStage.INFERENCE)]

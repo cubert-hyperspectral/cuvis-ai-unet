@@ -45,6 +45,8 @@ class SegmentationAnomalyScore(Node):
 
     _category = NodeCategory.TRANSFORM
     _tags = frozenset({NodeTag.EVALUATION, NodeTag.SEGMENTATION, NodeTag.TORCH})
+    # Declared on the class (cuvis-ai-core 0.14.1): scoring runs in val/test/inference.
+    EXECUTION_STAGES = frozenset(_SCORE_STAGES)
 
     INPUT_SPECS = {
         "logits": PortSpec(
@@ -85,10 +87,7 @@ class SegmentationAnomalyScore(Node):
             raise ValueError(
                 f"SegmentationAnomalyScore: top_frac must be in (0, 1], got {self.top_frac}."
             )
-        assert "execution_stages" not in kwargs, (
-            "SegmentationAnomalyScore fixes its own execution stages"
-        )
-        super().__init__(execution_stages=_SCORE_STAGES, top_frac=self.top_frac, **kwargs)
+        super().__init__(top_frac=self.top_frac, **kwargs)
 
     @torch.no_grad()
     def forward(

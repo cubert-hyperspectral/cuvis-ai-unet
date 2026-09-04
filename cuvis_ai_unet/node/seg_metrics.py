@@ -41,9 +41,11 @@ class SegMetrics(Node):
     }
     OUTPUT_SPECS = {"metrics": PortSpec(dtype=list, shape=(), description="list[Metric]")}
 
-    def __init__(self, execution_stages: set[ExecutionStage] | None = None, **kwargs: Any) -> None:
-        name, execution_stages = self.consume_base_kwargs(kwargs, execution_stages or _VAL_TEST)
-        super().__init__(name=name, execution_stages=execution_stages, **kwargs)
+    # Declared on the class (cuvis-ai-core 0.14.1): metrics run in val/test only.
+    EXECUTION_STAGES = frozenset(_VAL_TEST)
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self.reset()
 
     def reset(self) -> None:
