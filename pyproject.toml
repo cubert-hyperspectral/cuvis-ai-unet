@@ -36,7 +36,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "cuvis-ai-core>=0.11.0",
+  "cuvis-ai-core>=0.14.1",
   "cuvis-ai-schemas>=0.8.0",
   "torch>=2.1",
   # torchvision is declared directly so the cuda-group cu128 source pin below keeps the

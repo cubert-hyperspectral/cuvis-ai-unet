@@ -29,6 +29,7 @@ from typing import Any
 
 import numpy as np
 import torch
+import yaml
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 
 # Full lentils frames are ~263 MB (1000x1080x61 f32); the default file-descriptor
@@ -417,20 +418,58 @@ def _mark_initialized(pipeline: CuvisPipeline) -> None:
             n._statistically_initialized = True
 
 
+def _config_without_node(config_yaml: str | Path, node_name: str) -> Path:
+    """Write a sibling copy of the pipeline yaml without ``node_name`` and its connections.
+
+    Execution stages are declared on the node classes (cuvis-ai-core 0.14.1), so a loaded
+    node can no longer be switched off per instance. Dropping the file-reading source from
+    the config is how the saved graph runs on cubes injected through the batch.
+    """
+    src = Path(config_yaml)
+    cfg = yaml.safe_load(src.read_text(encoding="utf-8"))
+    cfg["nodes"] = [n for n in cfg.get("nodes", []) if n.get("name") != node_name]
+    prefix = f"{node_name}."
+    cfg["connections"] = [
+        c
+        for c in cfg.get("connections", [])
+        if not (
+            str(c.get("source", "")).startswith(prefix)
+            or str(c.get("target", "")).startswith(prefix)
+        )
+    ]
+    out = src.with_name(f"{src.stem}.without-{node_name}{src.suffix}")
+    out.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+    return out
+
+
 def load_artifact(
     config_yaml: str | Path,
     weights: str | Path | None = None,
     *,
     device: str | torch.device | None = None,
     registry: NodeRegistry | None = None,
+    drop_node: str | None = None,
 ) -> CuvisPipeline:
-    """Restore a saved pipeline artifact (YAML + name-keyed .pt) for inference."""
+    """Restore a saved pipeline artifact (YAML + name-keyed .pt) for inference.
+
+    ``drop_node`` removes one node (and its connections) from the config before building,
+    e.g. the file-reading ``DataSource`` when cubes are injected through the batch.
+    """
     registry = registry or register_plugins()
     weights = Path(weights) if weights else Path(config_yaml).with_suffix(".pt")
     device = str(device) if device else ("cuda" if torch.cuda.is_available() else "cpu")
-    pipe = CuvisPipeline.load_pipeline(
-        str(config_yaml), weights_path=str(weights), device=device, node_registry=registry
-    )
+    config_path = Path(config_yaml)
+    tmp = _config_without_node(config_path, drop_node) if drop_node else None
+    try:
+        pipe = CuvisPipeline.load_pipeline(
+            str(tmp or config_path),
+            weights_path=str(weights),
+            device=device,
+            node_registry=registry,
+        )
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
     _mark_initialized(pipe)
     for layer in pipe.torch_layers:
         layer.eval()
@@ -598,15 +637,18 @@ def profile(
 
     The full graph runs at INFERENCE stage: the loss nodes are stage-filtered
     out, Augment is an identity passthrough (visible as ~0 ms in the table),
-    and the file-reading DataSource is neutralized because cubes are injected
-    via the batch. Frames are pre-loaded to the device, so node timings are
-    pure compute; the one-off disk-read time is printed separately.
+    and the file-reading DataSource must be absent because cubes are injected
+    via the batch (load the artifact with ``drop_node="DataSource"``). Frames are
+    pre-loaded to the device, so node timings are pure compute; the one-off
+    disk-read time is printed separately.
     """
     nodes = {n.name: n for n in pipeline.nodes}
+    if "DataSource" in nodes:
+        raise ValueError(
+            'profile() expects the artifact loaded with drop_node="DataSource": stages are '
+            "declared on the node class, so the file-reading source cannot be switched off here."
+        )
     net = nodes["DynUNet"]
-    for n in pipeline.nodes:
-        if n.name == "DataSource":
-            n.execution_stages = set()
     device = next(iter(net.parameters())).device
 
     paths = split_frames(universe_csv, splits_json, split)[:frames]

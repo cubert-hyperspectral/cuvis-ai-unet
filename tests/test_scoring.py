@@ -89,9 +89,11 @@ def test_invalid_top_frac_raises() -> None:
             SegmentationAnomalyScore(top_frac=bad)
 
 
-def test_rejects_execution_stages_override() -> None:
-    with pytest.raises(AssertionError):
-        SegmentationAnomalyScore(execution_stages={ExecutionStage.TRAIN})
+def test_execution_stages_declared_on_class() -> None:
+    # Stages are a class-level declaration; the constructor takes no override.
+    expected = frozenset({ExecutionStage.VAL, ExecutionStage.TEST, ExecutionStage.INFERENCE})
+    assert SegmentationAnomalyScore.EXECUTION_STAGES == expected
+    assert SegmentationAnomalyScore().execution_stages == expected
 
 
 def test_k1_binary_logits_score_with_sigmoid() -> None:

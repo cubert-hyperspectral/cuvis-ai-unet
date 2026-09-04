@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## 0.3.0 - 2026-09-04
+
+### Changed
+
+- The segmentation losses, `SegmentationAnomalyScore` and `SegMetrics` declare their execution stages on the class (`EXECUTION_STAGES`, cuvis-ai-core 0.14.1) instead of passing `execution_stages=` to the constructor. The `execution_stages` parameter of `SegMetrics` is removed (`**kwargs` stays, so a yaml `execution_stages: null` still loads); `consume_base_kwargs` is no longer used. The profiling examples no longer assign `node.execution_stages` (read-only since core 0.14.1). Floors `cuvis-ai-core>=0.14.1`.
 
 ## 0.2.2 - 2026-08-31
 

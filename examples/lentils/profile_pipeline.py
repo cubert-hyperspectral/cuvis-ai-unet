@@ -37,7 +37,9 @@ def main() -> None:
     args = ap.parse_args()
 
     registry = eng.register_plugins(args.unet_manifest, args.augment_manifest)
-    pipe = eng.load_artifact(args.pipeline, args.weights, device=args.device, registry=registry)
+    pipe = eng.load_artifact(
+        args.pipeline, args.weights, device=args.device, registry=registry, drop_node="DataSource"
+    )
     eng.profile(
         pipe,
         args.universe_csv,
