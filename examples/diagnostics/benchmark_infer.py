@@ -11,9 +11,9 @@ import time
 
 import numpy as np
 import torch
+from cuvis_ai_core.utils.tiling import compute_tile_offsets, sliding_window_inference
 
 from cuvis_ai_unet.node.dynunet import DynUNet
-from cuvis_ai_unet.tiling import compute_tile_offsets, sliding_window_inference
 
 ap = argparse.ArgumentParser(description=__doc__)
 ap.add_argument("--npz-dir", required=True, help="directory of lentils .npz frames (first is used)")

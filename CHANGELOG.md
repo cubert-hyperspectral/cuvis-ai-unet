@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `DynUNet` pads, tiles and blends with cuvis-ai-core's `utils.tiling` (core 0.18.5), which carries this plugin's former `cuvis_ai_unet/tiling.py` unchanged and shares it with the cuvis-ai nodes. Outputs are unchanged. `cuvis_ai_unet.tiling` stays for one release as a re-export of the core helpers that raises a `DeprecationWarning`; import from `cuvis_ai_core.utils.tiling`. The examples import from core. Floors `cuvis-ai-core>=0.18.5`; the lock moves cuvis-ai-core only.
+
 ## 0.3.0 - 2026-09-04
 
 ### Changed

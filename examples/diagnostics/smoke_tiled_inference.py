@@ -21,11 +21,11 @@ import numpy as np
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cuvis_ai_core.utils.tiling import pad_hw_to_multiple, sliding_window_inference  # noqa: E402
 from lentils_datamodule import LentilsPatchDataset, labeled_frames, split_labeled  # noqa: E402
 
 from cuvis_ai_unet.node.dynunet import DynUNet  # noqa: E402
 from cuvis_ai_unet.node.losses import CrossEntropyLoss, DiceLoss  # noqa: E402
-from cuvis_ai_unet.tiling import pad_hw_to_multiple, sliding_window_inference  # noqa: E402
 
 
 def fg_iou(pred: torch.Tensor, target: torch.Tensor) -> float:
