@@ -11,9 +11,9 @@ sliding-window tile layout.
 from __future__ import annotations
 
 import torch
+from cuvis_ai_core.utils.tiling import compute_tile_offsets, pad_hw_to_multiple
 
 from cuvis_ai_unet.net import DynUNetBackbone
-from cuvis_ai_unet.tiling import compute_tile_offsets, pad_hw_to_multiple
 
 
 def trace(mode: str, bands: int, h: int, w: int, **kw) -> None:
