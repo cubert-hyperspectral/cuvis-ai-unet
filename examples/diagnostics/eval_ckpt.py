@@ -1,7 +1,8 @@
-"""Evaluate a raw index-keyed diagnostic checkpoint on a splits CSV (GPU, tiled):
+"""Evaluate a raw index-keyed diagnostic checkpoint on a lentils cu3s split (GPU, tiled):
   - pixel-level foreground IoU + Dice (on object frames), and
   - image-level AUROC (object vs normal frame) from image scores.
-No DataLoader (frames read directly) so it can run alongside other jobs.
+No DataLoader (frames are read one by one from the split's dataset) so it can run
+alongside other jobs.
 
 This is the metric oracle behind the published champion numbers; `evaluate.py`
 in ../lentils is the artifact-based front door with the same math. Raw
@@ -13,8 +14,8 @@ misassigns weights under strict=False.
 from __future__ import annotations
 
 import argparse
-import csv
 import os
+import sys
 
 import numpy as np
 import torch
@@ -25,6 +26,9 @@ from cuvis_ai_schemas.execution import Context
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+# The split's frames are read through the lentils examples' engine.
+sys.path.insert(0, os.path.join(REPO_ROOT, "examples", "lentils"))
+import _engine as eng  # noqa: E402
 
 
 def auroc(scores: np.ndarray, labels: np.ndarray) -> float:
@@ -59,8 +63,9 @@ def main() -> None:
         help="pipeline config YAML the checkpoint was saved under",
     )
     ap.add_argument("--ckpt", required=True, help="raw torch_layers.state_dict() .pt")
-    ap.add_argument("--splits-csv", required=True)
-    ap.add_argument("--split", default="test")
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
+    ap.add_argument("--split", default="test", choices=["train", "val", "test"])
     ap.add_argument("--overlap", type=float, default=None, help="override tile_overlap")
     ap.add_argument("--tile-batch", type=int, default=None, help="override tile_batch")
     ap.add_argument(
@@ -112,22 +117,16 @@ def main() -> None:
         n.eval()
     infer = Context(stage=ExecutionStage.INFERENCE, batch_idx=0, global_step=0)
 
-    rows = list(csv.DictReader(open(args.splits_csv)))
-    seen: set[str] = set()
-    test = [
-        r["npz_path"]
-        for r in rows
-        if r["split"] == args.split and not (r["npz_path"] in seen or seen.add(r["npz_path"]))
-    ]
+    dataset = eng.split_dataset(args.universe_csv, args.splits_json, args.split)
 
     ious, dices = [], []
     maxprob, fgarea, labels = [], [], []
     with torch.no_grad():
-        for p in test:
-            z = np.load(p)
-            mask = torch.from_numpy(np.asarray(z["mask"])).to(device)
+        for i in range(len(dataset)):
+            frame = dataset[i]
+            mask = eng._as_tensor(frame["mask"]).to(device)  # category ids, >= 1 is an object
             has_fg = int((mask >= 1).sum()) > 0
-            cube = torch.from_numpy(z["cube"].astype("float32")).unsqueeze(0).to(device)
+            cube = eng._as_tensor(frame["cube"]).float().unsqueeze(0).to(device)
             normed = norm.forward(data=cube)["normalized"]
             logits = net.forward(normed, context=infer)["logits"][0]  # [H,W,K]
             prob = torch.softmax(logits.float(), dim=-1)[..., 1]  # fg prob [H,W]
@@ -151,7 +150,7 @@ def main() -> None:
     au_prob = auroc(np.array(maxprob), labels)
     au_area = auroc(np.array(fgarea, dtype=np.float64), labels)
     print(
-        f"[eval] frames: {len(test)} total | {int(labels.sum())} object | {int((labels == 0).sum())} normal",
+        f"[eval] frames: {len(dataset)} total | {int(labels.sum())} object | {int((labels == 0).sum())} normal",
         flush=True,
     )
     print(

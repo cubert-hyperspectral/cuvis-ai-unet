@@ -5,7 +5,7 @@ prints DynUNet/Norm ms per frame, fps, and peak memory (plus the full per-node
 table when exactly one combination is requested)::
 
     python profile_pipeline.py --pipeline runs/2d128/pipeline.yaml \
-        --universe-csv lentils_universe.csv --splits-json lentils_adaclip.splits.json \
+        --universe-csv <lentils>/universe.csv --splits-json <lentils>/splits/adaclip.json \
         --overlaps 0,0.5 --tile-batches 1,16
 """
 
@@ -24,8 +24,8 @@ def main() -> None:
     ap.add_argument(
         "--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)"
     )
-    ap.add_argument("--universe-csv", required=True, help="universe.csv from gen_splits.py")
-    ap.add_argument("--splits-json", required=True, help="splits.json from gen_splits.py")
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument("--split", default="test", choices=["train", "val", "test"])
     ap.add_argument("--frames", type=int, default=8)
     ap.add_argument("--skip", type=int, default=2, help="warmup forwards discarded per combination")

@@ -13,22 +13,25 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 import torch
 from cuvis_ai_core.pipeline.factory import PipelineBuilder
 from cuvis_ai_core.pipeline.pipeline import CuvisPipeline
 from cuvis_ai_core.training import GradientTrainer, StatisticalTrainer
 from cuvis_ai_core.utils.node_registry import NodeRegistry
-from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
 from cuvis_ai_schemas.enums import ExecutionStage
 from cuvis_ai_schemas.execution import Context
+from cuvis_ai_schemas.training.config import TrainingConfig
 from cuvis_ai_schemas.training.optimizer import OptimizerConfig
-from cuvis_ai_schemas.training.trainer import TrainerConfig
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 UNET_MANIFEST = os.path.join(REPO_ROOT, "plugins.yaml")
 AUGMENT_MANIFEST = os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml")
+# The cu3s datamodule is built by the lentils examples' engine.
+sys.path.insert(0, os.path.join(REPO_ROOT, "examples", "lentils"))
+import _engine as eng  # noqa: E402
 
 
 def main() -> None:
@@ -36,7 +39,8 @@ def main() -> None:
     ap.add_argument(
         "--pipeline", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml")
     )
-    ap.add_argument("--csv", default=os.path.join(HERE, "lentils_seg_splits.csv"))
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument("--out", default=os.path.join(HERE, "out", "saved_pipeline"))
     args = ap.parse_args()
 
@@ -45,14 +49,14 @@ def main() -> None:
     reg.register_plugin(AUGMENT_MANIFEST)
 
     pipeline = PipelineBuilder().build_from_config(args.pipeline)
-    dm = MultiNpzDataModule(splits_csv=args.csv, split="test", batch_size=2, num_workers=0)
+    dm = eng.make_datamodule(args.universe_csv, args.splits_json, batch_size=2)
     StatisticalTrainer(pipeline=pipeline, datamodule=dm).fit()
     pipeline.unfreeze_nodes_by_name(["DynUNet"])
     GradientTrainer(
         pipeline=pipeline,
         datamodule=dm,
         loss_nodes=[n for n in pipeline.nodes if n.name in ("DiceLoss", "CrossEntropyLoss")],
-        trainer_config=TrainerConfig(
+        training_config=TrainingConfig(
             max_epochs=1,
             accelerator="auto",
             devices=1,
@@ -60,8 +64,8 @@ def main() -> None:
             log_every_n_steps=1,
             enable_checkpointing=False,
             check_val_every_n_epoch=10,
+            optimizer=OptimizerConfig(name="adam", lr=1e-3),
         ),
-        optimizer_config=OptimizerConfig(name="adam", lr=1e-3),
     ).fit()
 
     os.makedirs(args.out, exist_ok=True)

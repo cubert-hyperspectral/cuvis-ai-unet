@@ -1,59 +1,89 @@
-"""Lentils npz data loading for the cuvis-ai-unet segmentation smoke.
+"""Lentils cu3s data loading for the cuvis-ai-unet segmentation smoke.
 
 Experiment glue — NOT part of the ``cuvis_ai_unet`` package. Reads the labeled
-lentils npz frames, crops foreground-biased patches, z-score normalises per
-band, and yields samples keyed by pipeline input-port names: ``data`` (BHWC
-cube) and ``targets`` (BHW1 integer mask). cuvis-ai's ``pipeline.forward``
-distributes batch keys to any node whose INPUT_SPECS declares that port, so
-``data`` feeds the DynUNet node and ``targets`` feeds the loss nodes with no
-explicit source node.
+lentils frames from their cu3s recordings, crops foreground-biased patches,
+z-score normalises per band, and yields samples keyed by pipeline input-port
+names: ``data`` (BHWC cube) and ``targets`` (BHW1 integer mask). cuvis-ai's
+``pipeline.forward`` distributes batch keys to any node whose INPUT_SPECS
+declares that port, so ``data`` feeds the DynUNet node and ``targets`` feeds
+the loss nodes with no explicit source node.
 
-The lentils split CSV is built for normal-only anomaly detection (train = normal
-frames); for supervised segmentation we ignore it and split the labeled frames
-ourselves.
+The frames come from one split of the HF lentils download (its ``universe.csv``
+and ``splits/adaclip.json``). The smokes take the first labeled frames of that
+split and hold the last of them out as validation themselves. Checking a frame
+for foreground reads it, cube included, so the frame-count arguments cap how
+many frames are read.
 """
 
 from __future__ import annotations
 
-import glob
 import os
+import sys
 from typing import Any
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-# Directory of per-frame .npz files; callers pass it explicitly (or set
-# LENTILS_NPZ_DIR when using the datamodule wrapper's default).
-NPZ_DIR = os.environ.get("LENTILS_NPZ_DIR", "./lentils_npz")
+# The lentils examples' engine (examples/lentils/_engine.py) resolves the splits.
+LENTILS_EXAMPLES = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lentils"
+)
 
 
-def labeled_frames(npz_dir: str, target_key: str) -> list[str]:
-    """Return npz paths whose ``target_key`` mask contains any foreground."""
-    out = []
-    for f in sorted(glob.glob(os.path.join(npz_dir, "*.npz"))):
-        z = np.load(f)
-        if target_key in z.files and bool((z[target_key] != 0).any()):
-            out.append(f)
+def split_dataset(universe_csv: str, splits_json: str, split: str) -> Dataset:
+    """Return one split of the lentils cu3s recordings as a dataset.
+
+    ``dataset[i]`` reads frame i from its recording: ``cube`` ``[H, W, C]`` and the
+    ``mask`` ``[H, W]`` of COCO category ids (0 is background).
+    """
+    if LENTILS_EXAMPLES not in sys.path:
+        sys.path.insert(0, LENTILS_EXAMPLES)
+    import _engine
+
+    return _engine.split_dataset(universe_csv, splits_json, split)
+
+
+def labeled_frames(dataset: Dataset, max_frames: int | None = None) -> list[int]:
+    """Return the indices of ``dataset`` frames whose mask contains any foreground.
+
+    Checking a frame reads it, so the scan stops once ``max_frames`` are found.
+    """
+    out: list[int] = []
+    for i in range(len(dataset)):
+        if max_frames and len(out) >= max_frames:
+            break
+        if bool((np.asarray(dataset[i]["mask"]) != 0).any()):
+            out.append(i)
     return out
 
 
 class LentilsPatchDataset(Dataset):
     """Foreground-biased patches precomputed from labeled lentils frames.
 
-    Each frame is loaded once at construction; ``per_frame`` patches centred on
+    Each frame is read once at construction; ``per_frame`` patches centred on
     random foreground pixels are cropped and z-score normalised, then cached as
-    small arrays (so __getitem__ never reloads a 260 MB cube).
+    small arrays (so __getitem__ never rereads a 260 MB cube). ``target`` is
+    ``binary`` (background vs any object, ``mask > 0``) or ``multiclass`` (the
+    category ids of the cu3s ``mask``).
     """
 
     def __init__(
-        self, files: list[str], target_key: str, patch: int, per_frame: int, seed: int = 0
+        self,
+        dataset: Dataset,
+        indices: list[int],
+        target: str,
+        patch: int,
+        per_frame: int,
+        seed: int = 0,
     ) -> None:
         self.samples: list[tuple[np.ndarray, np.ndarray]] = []
-        for fi, f in enumerate(files):
-            z = np.load(f)
-            cube = z["cube"].astype(np.float32)  # [H, W, C]
-            mask = np.asarray(z[target_key])  # [H, W]
+        for fi, i in enumerate(indices):
+            frame = dataset[i]
+            cube = np.asarray(frame["cube"], dtype=np.float32)  # [H, W, C]
+            mask = np.asarray(frame["mask"])  # [H, W] category ids
+            if target == "binary":
+                mask = mask > 0
             h, w, c = cube.shape
             ys, xs = np.nonzero(mask)
             rng = np.random.default_rng(seed * 100003 + fi)
@@ -85,13 +115,10 @@ class LentilsPatchDataset(Dataset):
         return {"data": torch.from_numpy(cube), "targets": torch.from_numpy(mask).unsqueeze(-1)}
 
 
-def split_labeled(npz_dir: str, target_key: str, max_frames: int | None, val_frac: float):
-    """Deterministic train/val split over labeled frames (ignores the CSV split)."""
-    files = labeled_frames(npz_dir, target_key)
-    if max_frames:
-        files = files[:max_frames]
-    n_val = max(1, int(len(files) * val_frac))
-    return files[:-n_val], files[-n_val:]
+def split_labeled(frames: list[int], val_frac: float) -> tuple[list[int], list[int]]:
+    """Deterministic train/val split of labeled frames (the last ``val_frac`` is val)."""
+    n_val = max(1, int(len(frames) * val_frac))
+    return frames[:-n_val], frames[-n_val:]
 
 
 try:
@@ -105,7 +132,9 @@ try:
         def __init__(
             self,
             *,
-            npz_dir: str = NPZ_DIR,
+            universe_csv: str,
+            splits_json: str,
+            split: str = "train",
             target: str = "binary",
             patch: int = 128,
             per_frame: int = 4,
@@ -116,22 +145,29 @@ try:
             **kwargs: Any,
         ) -> None:
             super().__init__(batch_size=batch_size, num_workers=num_workers, **kwargs)
-            self.npz_dir = npz_dir
-            self.target_key = "mask" if target == "binary" else "class_mask"
+            self.universe_csv = universe_csv
+            self.splits_json = splits_json
+            self.split = split
+            self.target = target
             self.patch = patch
             self.per_frame = per_frame
             self.max_frames = max_frames
             self.val_frac = val_frac
+            self._frames: tuple[Dataset, list[int], list[int]] | None = None
 
         def build_stage_dataset(self, stage: str) -> Dataset:
             """Build the patch dataset for a Lightning stage."""
-            train, val = split_labeled(
-                self.npz_dir, self.target_key, self.max_frames, self.val_frac
-            )
+            if self._frames is None:
+                # Scan once: every stage crops from the same labeled frames.
+                dataset = split_dataset(self.universe_csv, self.splits_json, self.split)
+                train, val = split_labeled(labeled_frames(dataset, self.max_frames), self.val_frac)
+                self._frames = (dataset, train, val)
+            dataset, train, val = self._frames
             is_train = stage in ("train", "fit")
             return LentilsPatchDataset(
+                dataset,
                 train if is_train else val,
-                self.target_key,
+                self.target,
                 self.patch,
                 self.per_frame,
                 seed=0 if is_train else 1,

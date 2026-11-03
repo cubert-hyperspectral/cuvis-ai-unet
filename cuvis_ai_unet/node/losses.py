@@ -18,7 +18,7 @@ from cuvis_ai_schemas.enums import ExecutionStage, NodeCategory, NodeTag
 from cuvis_ai_schemas.pipeline import PortSpec
 from torch import Tensor
 
-from cuvis_ai_unet.functional import soft_dice_loss, to_bchw_targets
+from cuvis_ai_unet.functional import fold_targets, soft_dice_loss, to_bchw_targets
 
 _LOSS_STAGES = {ExecutionStage.TRAIN, ExecutionStage.VAL, ExecutionStage.TEST}
 
@@ -140,6 +140,7 @@ class CrossEntropyLoss(_SegmentationLoss):
     def forward(self, logits: Tensor, targets: Tensor, **_: Any) -> dict[str, Tensor]:
         """Compute the weighted cross-entropy from BHWC logits and a mask."""
         logits_bchw, targets_bhw = to_bchw_targets(logits, targets)
+        targets_bhw = fold_targets(targets_bhw, logits_bchw.shape[1], self.ignore_index)
         buf = getattr(self, "_class_weights", None)
         weights = buf.to(logits_bchw.dtype) if buf is not None else None
         loss = F.cross_entropy(
@@ -201,6 +202,7 @@ class OHEMCrossEntropyLoss(_SegmentationLoss):
     def forward(self, logits: Tensor, targets: Tensor, **_: Any) -> dict[str, Tensor]:
         """Compute the weighted OHEM cross-entropy from BHWC logits and a mask."""
         logits_bchw, targets_bhw = to_bchw_targets(logits, targets)
+        targets_bhw = fold_targets(targets_bhw, logits_bchw.shape[1], self.ignore_index)
         per_pixel = F.cross_entropy(
             logits_bchw, targets_bhw, reduction="none", ignore_index=self.ignore_index
         )

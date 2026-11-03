@@ -9,29 +9,39 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 import torch
 import torch.nn.functional as F
 from cuvis_ai_core.pipeline.factory import PipelineBuilder
 from cuvis_ai_core.training import GradientTrainer, StatisticalTrainer
 from cuvis_ai_core.utils.node_registry import NodeRegistry
-from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
 from cuvis_ai_schemas.enums import ExecutionStage
 from cuvis_ai_schemas.execution import Context
+from cuvis_ai_schemas.training.config import TrainingConfig
 from cuvis_ai_schemas.training.optimizer import OptimizerConfig
-from cuvis_ai_schemas.training.trainer import TrainerConfig
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+# The cu3s datamodule is built by the lentils examples' engine.
+sys.path.insert(0, os.path.join(REPO_ROOT, "examples", "lentils"))
+import _engine as eng  # noqa: E402
 
 ap = argparse.ArgumentParser(
     description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
 )
-ap.add_argument("--splits-csv", required=True)
+ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
 ap.add_argument("--ckpt-out", required=True, help="where to save the raw torch_layers state_dict")
 ap.add_argument("--config", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
 ap.add_argument("--epochs", type=int, default=25)
-ap.add_argument("--num-workers", type=int, default=4)
+ap.add_argument(
+    "--num-workers",
+    type=int,
+    default=0,
+    help="DataLoader workers; keep 0 (the cuvis SDK reads in this process and workers "
+    "cannot use it on the GPU)",
+)
 ap.add_argument("--batch", type=int, default=8, help="3D@128 needs 4 (batch 8 OOMs the GPU)")
 ap.add_argument("--no-val", action="store_true", help="disable the trainer's full-frame validation")
 ap.add_argument("--unet-manifest", default=os.path.join(REPO_ROOT, "plugins.yaml"))
@@ -40,7 +50,8 @@ ap.add_argument(
 )
 args = ap.parse_args()
 UNET, AUG = args.unet_manifest, args.augment_manifest
-CSV, YAML, CKPT = args.splits_csv, args.config, args.ckpt_out
+UNIVERSE, SPLITS = args.universe_csv, args.splits_json
+YAML, CKPT = args.config, args.ckpt_out
 EPOCHS, NW, BATCH = args.epochs, args.num_workers, args.batch
 
 
@@ -57,9 +68,7 @@ def main() -> None:
     reg.register_plugin(AUG)
     pipe = PipelineBuilder(node_registry=reg).build_from_config(YAML)
     nodes = {n.name: n for n in pipe.nodes}
-    dm = MultiNpzDataModule(
-        splits_csv=CSV, split="test", batch_size=BATCH, num_workers=NW, persistent_workers=NW > 0
-    )
+    dm = eng.make_datamodule(UNIVERSE, SPLITS, batch_size=BATCH, num_workers=NW)
     if args.no_val:
         # The trainer's built-in val runs DynUNet on FULL frames; in 3D that OOMs
         # (InstanceNorm3d over the whole 1000x1080 volume). We don't need it — real
@@ -90,7 +99,7 @@ def main() -> None:
         pipeline=pipe,
         datamodule=dm,
         loss_nodes=[nodes["DiceLoss"], nodes["CrossEntropyLoss"]],
-        trainer_config=TrainerConfig(
+        training_config=TrainingConfig(
             max_epochs=EPOCHS,
             accelerator="auto",
             devices=1,
@@ -98,8 +107,8 @@ def main() -> None:
             log_every_n_steps=1,
             enable_checkpointing=False,
             check_val_every_n_epoch=EPOCHS,
+            optimizer=OptimizerConfig(name="adam", lr=1e-3),
         ),
-        optimizer_config=OptimizerConfig(name="adam", lr=1e-3),
     ).fit()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -117,7 +126,8 @@ def main() -> None:
     seen = 0
     with torch.no_grad():
         for batch in dm.predict_dataloader():
-            cube = batch["cube"].to(device)
+            # uint16 from the cu3s reader (in the graph the DataSource node casts it)
+            cube = batch["cube"].float().to(device)
             mask = batch["mask"].to(device)
             normed = norm.forward(data=cube)["normalized"]
             for b in range(cube.shape[0]):

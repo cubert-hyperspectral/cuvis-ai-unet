@@ -32,9 +32,9 @@ import torch
 import yaml
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 
-# Full lentils frames are ~263 MB (1000x1080x61 f32); the default file-descriptor
-# sharing strategy pushes these through /dev/shm and exhausts it with several
-# workers. file_system sharing avoids the shm/fd ceiling.
+# Full lentils frames are ~263 MB (1000x1080x61 f32); should DataLoader workers ship them
+# (num_workers > 0, only possible with sdk_cuda=False on Linux), the default file-descriptor
+# sharing strategy pushes them through /dev/shm and exhausts it. file_system sharing avoids that.
 torch.multiprocessing.set_sharing_strategy("file_system")
 
 from cuvis_ai_core.pipeline.pipeline import CuvisPipeline
@@ -90,7 +90,6 @@ def build_graph(
     fg_percent: float = 0.5,
     hflip_prob: float = 0.5,
     vflip_prob: float = 0.5,
-    dataset_crop: bool = False,
     augment_seed: int = 0,
     dice_weight: float = 1.0,
     ce_weight: float = 1.0,
@@ -134,27 +133,17 @@ def build_graph(
 
     source = CU3SDataNode(name="DataSource")
     norm = ZScoreNormalizer(name="Norm", **norm_kwargs)
-    # The foreground-biased crop is either a graph transform here (default) OR done in the
-    # dataloader (dataset_crop=True -> npz_multi crop_size); doing both would double-crop, so
-    # when the dataloader crops we keep only the flips (which run on the already-cropped patch).
-    crop_transforms = (
-        []
-        if dataset_crop
-        else [
-            {
-                "type": "RandomForegroundBiasedCrop",
-                "size": [patch, patch],
-                "fg_percent": fg_percent,
-                "probabilistic": True,
-            }
-        ]
-    )
     augment = AugmentationCompose(
         name="Augment",
         seed=augment_seed,
         extra_transform_modules=["cuvis_ai_unet.transforms"],
         transforms=[
-            *crop_transforms,
+            {
+                "type": "RandomForegroundBiasedCrop",
+                "size": [patch, patch],
+                "fg_percent": fg_percent,
+                "probabilistic": True,
+            },
             {"type": "RandomHorizontalFlip", "prob": hflip_prob},
             {"type": "RandomVerticalFlip", "prob": vflip_prob},
         ],
@@ -214,54 +203,43 @@ def make_datamodule(
     splits_json: str | Path,
     *,
     batch_size: int = 8,
-    num_workers: int = 4,
+    num_workers: int = 0,
     samples_per_frame: int | None = None,
-    crop_size: tuple[int, int] | None = None,
-    crop_fg_percent: float = 0.5,
+    max_open_sessions: int = 15,
+    read_ahead: int = 0,
+    cuda_cubes: bool = False,
 ):
-    """Build the multi-npz datamodule from a universe.csv + splits.json.
+    """Build the multi-file cu3s datamodule from a universe.csv + splits.json.
 
-    Both artifacts come from ``gen_splits.py`` (from existing NPZ, SDK-free) or
-    ``convert_split_manifest`` (from cu3s + COCO): the universe.csv maps each frame's
-    ``(source, index)`` identity to its ``.npz``; the splits.json is a
-    ``DataSplitConfig`` of per-source selectors. ``samples_per_frame`` (N fg-biased
-    crops per frame per epoch) is applied by the base datamodule to the *train*
-    split only — val/test stay one crop per frame.
+    The lentils HF dataset ships both: ``universe.csv`` lists every frame (its cu3s
+    recording, its index there, its COCO file) and ``splits/adaclip.json`` is the
+    ``DataSplitConfig`` of per-source selectors (808 train / 148 val / 180 test). The
+    frames are read straight from the recordings; the batch ``mask`` holds the COCO
+    category ids, which the losses fold into background vs foreground.
+    ``samples_per_frame`` (N fg-biased crops per frame per epoch) is applied by the base
+    datamodule to the *train* split only — val/test stay one crop per frame.
 
-    ``crop_size`` (needs a dataloader release with npz_multi crop support; no released
-    version has it yet, so passing it raises with instructions) makes the dataset return
-    a foreground-biased ``(h, w)`` patch per train sample instead of the whole frame —
-    the I/O-cheap alternative to the in-graph crop node (build the graph with
-    ``dataset_crop=True`` so the crop is not applied twice). Val/test stay full-frame.
-
-    CAVEAT (``dataset_crop``): the crop then sits *upstream* of the ``Norm`` node, so the
-    Phase-1 ZScoreNormalizer fits its running stats on the cropped train patches, not on
-    full frames (eval frames are normalized with those crop-fit stats). With global z-score
-    this only shifts the fitted mean/std and is usually fine, but it makes the run not
-    strictly comparable to an in-graph-crop run whose Norm was fit on full frames.
+    Reader options: ``num_workers`` stays 0 (the cuvis SDK reads in this process; workers
+    cannot use it on the GPU), ``max_open_sessions`` recordings stay open per loader (15
+    covers every lentils recording; each holds about 0.3 to 0.6 GB of GPU memory),
+    ``read_ahead`` frames are read ahead of the model step (the train loader ignores it when
+    ``samples_per_frame > 1``), ``cuda_cubes`` keeps the cubes on the GPU.
     """
     from cuvis_ai_core.data.splits_io import load_splits
-    from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
+    from cuvis_ai_dataloader.data import MultiCu3sDataModule
 
     kwargs: dict[str, Any] = {
         "universe_csv": str(universe_csv),
         "splits": load_splits(str(splits_json)),
         "batch_size": batch_size,
         "num_workers": num_workers,
-        "persistent_workers": num_workers > 0,
+        "max_open_sessions": max_open_sessions,
+        "read_ahead": read_ahead,
+        "cuda_cubes": cuda_cubes,
     }
     if samples_per_frame is not None:
         kwargs["samples_per_frame"] = samples_per_frame
-    if crop_size is not None:
-        if "crop_size" not in inspect.signature(MultiNpzDataModule.__init__).parameters:
-            raise RuntimeError(
-                "--dataset-crop needs a cuvis-ai-dataloader with npz_multi crop_size "
-                "support (not yet released); use the in-graph crop (the default, "
-                "without --dataset-crop) instead."
-            )
-        kwargs["crop_size"] = tuple(crop_size)
-        kwargs["crop_fg_percent"] = crop_fg_percent
-    return MultiNpzDataModule(**kwargs)
+    return MultiCu3sDataModule(**kwargs)
 
 
 class EpochLog(Callback):
@@ -538,19 +516,22 @@ def auroc(scores: np.ndarray, labels: np.ndarray) -> float:
     return (ranks[labels].sum() - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
 
 
-def split_frames(
-    universe_csv: str | Path, splits_json: str | Path, split: str = "test"
-) -> list[str]:
-    """Unique npz paths of a split, resolved from the universe.csv + splits.json.
+def split_dataset(universe_csv: str | Path, splits_json: str | Path, split: str = "test"):
+    """The frames of a split as a dataset, resolved from the universe.csv + splits.json.
 
     Uses the datamodule's own selector resolution so the frames evaluated are
     exactly those the trainer would load (minus train ``samples_per_frame``
-    multiplicity, which never touches val/test).
+    multiplicity, which never touches val/test). ``dataset[i]`` reads frame i from
+    its cu3s recording: ``cube`` ``[H, W, C]`` and the category-id ``mask`` ``[H, W]``.
     """
-    dm = make_datamodule(universe_csv, splits_json, batch_size=1, num_workers=0)
+    dm = make_datamodule(universe_csv, splits_json, batch_size=1)
     dm.setup(stage=None)
-    ds = {"train": dm.train_ds, "val": dm.val_ds, "test": dm.test_ds}.get(split)
-    return [rec["materialized_path"] for rec in ds.rows] if ds is not None else []
+    return {"train": dm.train_ds, "val": dm.val_ds, "test": dm.test_ds}[split]
+
+
+def _as_tensor(x: Any) -> torch.Tensor:
+    """A frame array as a torch tensor (the reader hands out numpy, or torch with cuda_cubes)."""
+    return x if torch.is_tensor(x) else torch.from_numpy(np.asarray(x))
 
 
 def evaluate(
@@ -565,8 +546,8 @@ def evaluate(
 ) -> dict[str, Any]:
     """Frame-by-frame tiled evaluation: pixel fg-IoU/Dice + image-level AUROC.
 
-    Frames are read directly (no DataLoader) and pushed through Norm + DynUNet
-    at inference stage — the exact procedure behind the published champion
+    Frames are read one by one from the split's dataset (no DataLoader) and pushed
+    through Norm + DynUNet at inference stage — the exact procedure behind the published champion
     numbers. Object frames contribute to the pixel metrics; all frames
     contribute to the image-level AUROCs (max fg-probability and predicted
     fg-area scores vs the frame-has-objects label).
@@ -582,18 +563,17 @@ def evaluate(
     device = next(iter(net.parameters())).device
     infer = Context(stage=ExecutionStage.INFERENCE, batch_idx=0, global_step=0)
 
-    frames = split_frames(universe_csv, splits_json, split)
-    if max_frames:
-        frames = frames[:max_frames]
+    dataset = split_dataset(universe_csv, splits_json, split)
+    n_frames = min(len(dataset), max_frames) if max_frames else len(dataset)
 
     ious, dices = [], []
     maxprob, fgarea, labels = [], [], []
     with torch.no_grad():
-        for p in frames:
-            z = np.load(p)
-            mask = torch.from_numpy(np.asarray(z["mask"])).to(device)
+        for i in range(n_frames):
+            frame = dataset[i]
+            mask = _as_tensor(frame["mask"]).to(device)
             has_fg = int((mask >= 1).sum()) > 0
-            cube = torch.from_numpy(z["cube"].astype("float32")).unsqueeze(0).to(device)
+            cube = _as_tensor(frame["cube"]).float().unsqueeze(0).to(device)
             normed = norm.forward(data=cube)["normalized"]
             logits = net.forward(normed, context=infer)["logits"][0]  # [H,W,K]
             prob = torch.softmax(logits.float(), dim=-1)[..., 1]  # fg prob [H,W]
@@ -612,7 +592,7 @@ def evaluate(
     lab = np.array(labels)
     return {
         "split": split,
-        "frames": len(frames),
+        "frames": n_frames,
         "object_frames": int(lab.sum()),
         "normal_frames": int((lab == 0).sum()),
         "fg_iou": float(np.nanmean(ious)) if ious else float("nan"),
@@ -651,17 +631,16 @@ def profile(
     net = nodes["DynUNet"]
     device = next(iter(net.parameters())).device
 
-    paths = split_frames(universe_csv, splits_json, split)[:frames]
+    dataset = split_dataset(universe_csv, splits_json, split)
     batches, load_ms = [], []
-    for p in paths:
+    for i in range(min(frames, len(dataset))):
         t0 = time.perf_counter()
-        z = np.load(p)
-        cube = torch.from_numpy(z["cube"].astype("float32")).unsqueeze(0)
+        cube = _as_tensor(dataset[i]["cube"]).float().unsqueeze(0)
         load_ms.append((time.perf_counter() - t0) * 1e3)
         batches.append({"cube": cube.to(device)})
     print(
         f"[prof] {len(batches)} frames on {device} | frame {tuple(batches[0]['cube'].shape)} "
-        f"| mean disk-read={np.mean(load_ms):.0f} ms/frame (EXCLUDED from node timings)",
+        f"| mean cu3s read={np.mean(load_ms):.0f} ms/frame (EXCLUDED from node timings)",
         flush=True,
     )
 

@@ -2,12 +2,14 @@
 
 Champion reproduction (2D @ 128, AdaCLIP split, expect fg-IoU ≈ 0.79 on eval)::
 
-    python train.py --universe-csv lentils_universe.csv \
-        --splits-json lentils_adaclip.splits.json \
-        --epochs 20 --batch 8 --num-workers 4 --out runs/2d128
+    python train.py --universe-csv <lentils>/universe.csv \
+        --splits-json <lentils>/splits/adaclip.json \
+        --epochs 20 --batch 8 --samples-per-frame 4 --out runs/2d128
 
-The universe.csv + splits.json come from ``gen_splits.py``. Patches-per-frame
-multiplicity is ``--samples-per-frame N`` (the base datamodule draws N fresh
+``<lentils>`` is the HF lentils download (``PublicDatasets.download_dataset(
+"industrial_fod_lentils", ...)``): the frames are read straight from its cu3s recordings,
+``universe.csv`` lists them and ``splits/adaclip.json`` is the 808 / 148 / 180 split.
+Patches-per-frame multiplicity is ``--samples-per-frame N`` (the base datamodule draws N fresh
 fg-biased crops per train frame per epoch; val/test are unaffected). Evaluate the
 saved artifact with ``evaluate.py``; profile it with ``profile_pipeline.py``.
 """
@@ -24,8 +26,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--universe-csv", required=True, help="universe.csv from gen_splits.py")
-    ap.add_argument("--splits-json", required=True, help="splits.json from gen_splits.py")
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument(
         "--out", required=True, help="output dir for the artifact (pipeline.yaml + .pt + run.json)"
     )
@@ -46,13 +48,35 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--batch", type=int, default=8)
-    ap.add_argument("--num-workers", type=int, default=4)
+    ap.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="DataLoader workers; keep 0 (the cuvis SDK reads in this process and workers "
+        "cannot use it on the GPU)",
+    )
+    ap.add_argument(
+        "--max-open-sessions",
+        type=int,
+        default=15,
+        help="cu3s recordings kept open per loader (15 = all lentils recordings; each holds "
+        "about 0.3 to 0.6 GB of GPU memory; use 3 on an 8 GB GPU)",
+    )
+    ap.add_argument(
+        "--read-ahead",
+        type=int,
+        default=0,
+        help="frames read ahead of the model step (the train loader ignores it when "
+        "--samples-per-frame > 1)",
+    )
+    ap.add_argument(
+        "--cuda-cubes", action="store_true", help="keep the cubes on the GPU (needs the room)"
+    )
     ap.add_argument(
         "--samples-per-frame",
         type=int,
         default=None,
-        help="N crops per frame per epoch via the dataloader (needs a dataloader "
-        "release with base-module support; otherwise use gen_splits.py --repeat)",
+        help="N fg-biased crops per frame per epoch via the dataloader",
     )
     ap.add_argument(
         "--val-every",
@@ -62,13 +86,6 @@ def main() -> None:
     )
     ap.add_argument("--tile-overlap", type=float, default=0.5)
     ap.add_argument("--tile-batch", type=int, default=16)
-    ap.add_argument(
-        "--dataset-crop",
-        action="store_true",
-        help="crop foreground-biased patches in the dataloader (npz_multi crop_size=[patch,patch]) "
-        "instead of the augment graph node — ships ~patch-sized samples for a large I/O win "
-        "(needs a dataloader release with npz_multi crop support). fg-percent applies to the crop.",
-    )
     ap.add_argument("--hflip-prob", type=float, default=0.5, help="horizontal-flip probability")
     ap.add_argument(
         "--vflip-prob", type=float, default=0.5, help="vertical-flip probability (0 disables it)"
@@ -107,7 +124,6 @@ def main() -> None:
         fg_percent=args.fg_percent,
         hflip_prob=args.hflip_prob,
         vflip_prob=args.vflip_prob,
-        dataset_crop=args.dataset_crop,
         dice_weight=args.dice_weight,
         ce_weight=args.ce_weight,
         with_metrics=args.tensorboard,
@@ -121,8 +137,9 @@ def main() -> None:
         batch_size=args.batch,
         num_workers=args.num_workers,
         samples_per_frame=args.samples_per_frame,
-        crop_size=(args.patch, args.patch) if args.dataset_crop else None,
-        crop_fg_percent=args.fg_percent,
+        max_open_sessions=args.max_open_sessions,
+        read_ahead=args.read_ahead,
+        cuda_cubes=args.cuda_cubes,
     )
     eng.train(
         pipe,

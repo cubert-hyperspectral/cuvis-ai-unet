@@ -22,7 +22,12 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cuvis_ai_core.utils.tiling import pad_hw_to_multiple, sliding_window_inference  # noqa: E402
-from lentils_datamodule import LentilsPatchDataset, labeled_frames, split_labeled  # noqa: E402
+from lentils_datamodule import (  # noqa: E402
+    LentilsPatchDataset,
+    labeled_frames,
+    split_dataset,
+    split_labeled,
+)
 
 from cuvis_ai_unet.node.dynunet import DynUNet  # noqa: E402
 from cuvis_ai_unet.node.losses import CrossEntropyLoss, DiceLoss  # noqa: E402
@@ -37,7 +42,8 @@ def fg_iou(pred: torch.Tensor, target: torch.Tensor) -> float:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--npz-dir", required=True, help="directory of lentils .npz frames")
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument("--steps", type=int, default=60)
     ap.add_argument("--tile", type=int, default=128)
     ap.add_argument("--frames", type=int, default=12)
@@ -45,8 +51,12 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # ---- brief patch training (binary, 2d)
-    train_files, val_files = split_labeled(args.npz_dir, "mask", args.frames, 0.25)
-    ds = LentilsPatchDataset(train_files, "mask", args.tile, 4, seed=0)
+    # One scan of the train split covers both: patches from the first --frames labeled
+    # frames (split as before), the next labeled frame for the full-frame check below.
+    dataset = split_dataset(args.universe_csv, args.splits_json, "train")
+    labeled = labeled_frames(dataset, args.frames + 1)
+    train_frames, val_frames = split_labeled(labeled[: args.frames], 0.25)
+    ds = LentilsPatchDataset(dataset, train_frames, "binary", args.tile, 4, seed=0)
     loader = torch.utils.data.DataLoader(ds, batch_size=4, shuffle=True, drop_last=True)
     bands = ds.samples[0][0].shape[-1]
     node = (
@@ -83,13 +93,12 @@ def main() -> None:
     assert eq_u and eq_g, "input==tile equivalence FAILED"
 
     # ---- full labeled frame: single-pass vs tiled
-    frame = labeled_frames(args.npz_dir, "mask")[args.frames]  # unseen frame
-    z = np.load(frame)
-    cube = z["cube"].astype(np.float32)
+    frame = dataset[labeled[args.frames]]  # unseen frame
+    cube = np.asarray(frame["cube"], dtype=np.float32)
     mu = cube.reshape(-1, cube.shape[-1]).mean(0)
     sd = cube.reshape(-1, cube.shape[-1]).std(0) + 1e-6
     cube = (cube - mu) / sd
-    mask = torch.from_numpy(np.asarray(z["mask"]).astype(np.int64))
+    mask = torch.from_numpy((np.asarray(frame["mask"]) > 0).astype(np.int64))
     x = torch.from_numpy(cube).unsqueeze(0).to(device)  # [1, H, W, C] BHWC
 
     x_nchw = x.permute(0, 3, 1, 2).contiguous()

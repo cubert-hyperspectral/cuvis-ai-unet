@@ -242,3 +242,33 @@ def test_ohem_default_path_unchanged_without_void_labels() -> None:
     k = min(max(int(2.0 * max(int(fg.sum()), 1)), 8), int((~fg).sum()))
     expected = torch.cat([per_pixel[fg], torch.topk(per_pixel[~fg], k).values]).mean()
     assert torch.allclose(loss, expected)
+
+
+@pytest.mark.parametrize("loss_cls", [CrossEntropyLoss, OHEMCrossEntropyLoss])
+def test_ce_losses_fold_category_ids_like_a_binary_mask(loss_cls: type) -> None:
+    # The cu3s data modules deliver the COCO category ids (0..7 on lentils) as the mask; a
+    # two-class net must train on them as background vs any object, like a binary mask.
+    torch.manual_seed(0)
+    logits = torch.randn(B, H, W, 2)
+    categories = torch.randint(0, 8, (B, H, W), dtype=torch.int32)
+    binary = (categories > 0).to(torch.int32)
+    loss = loss_cls()
+    assert torch.allclose(
+        loss.forward(logits, categories)["loss"], loss.forward(logits, binary)["loss"]
+    )
+
+
+def test_ce_fold_keeps_the_ignore_index() -> None:
+    import torch.nn.functional as F
+
+    torch.manual_seed(0)
+    logits = torch.randn(B, H, W, 2)
+    targets = torch.randint(0, 8, (B, H, W))
+    targets[:, 0, :] = 255  # void row
+    got = CrossEntropyLoss(ignore_index=255).forward(logits, targets)["loss"]
+    want = F.cross_entropy(
+        logits.permute(0, 3, 1, 2),
+        torch.where(targets == 255, targets, targets.clamp(max=1)),
+        ignore_index=255,
+    )
+    assert torch.allclose(got, want)

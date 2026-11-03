@@ -65,7 +65,10 @@ dev = [
 # the locally installed cuvis SDK (machine-specific), so that pin is a documented step in the
 # notebooks, not a hard pin here.
 notebooks = [
-  "cuvis-ai-dataloader[cu3s,coco]>=0.5.0",  # universe.csv (materialized_path) vocabulary
+  "cuvis-ai-dataloader[cu3s,coco]>=0.8.2",  # cu3s_multi: bounded open recordings (max_open_sessions)
+  # PublicDatasets in core 0.18.4+ fetches the lentils revision whose splits/adaclip.json loads
+  # (`constraints`; the earlier revisions carry `leakage_check` or only a splits.csv).
+  "cuvis-ai-core>=0.18.4",
   "cuvis-ai>=0.11",  # builtin nodes the notebooks wire (CU3SDataNode, ZScoreNormalizer, TensorBoard monitor)
   # cuvis-ai-augment (AugmentationCompose) is git-tag-released, not on PyPI, so it cannot live in
   # this extra: install it alongside, e.g.
