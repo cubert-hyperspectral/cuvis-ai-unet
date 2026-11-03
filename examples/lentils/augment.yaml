@@ -5,7 +5,7 @@
 name: augment
 package_name: cuvis-ai-augment
 repo: "https://github.com/cubert-hyperspectral/cuvis-ai-augment.git"
-tag: "v0.3.2"
+tag: "v0.4.3"
 capabilities:
   - class_name: cuvis_ai_augment.node.compose.AugmentationCompose
 
