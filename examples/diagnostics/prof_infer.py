@@ -30,10 +30,9 @@ import numpy as np
 import torch
 from cuvis_ai_core.pipeline.factory import PipelineBuilder
 from cuvis_ai_core.utils.node_registry import NodeRegistry
+from cuvis_ai_core.utils.tiling import compute_tile_offsets
 from cuvis_ai_schemas.enums import ExecutionStage
 from cuvis_ai_schemas.execution import Context
-
-from cuvis_ai_unet.tiling import compute_tile_offsets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))

@@ -1,15 +1,16 @@
-"""Unit tests for the boundary-padding and sliding-window utilities (pure torch)."""
+"""The boundary-padding and sliding-window utilities (cuvis-ai-core's ``utils.tiling``) as the
+node uses them."""
 
 import pytest
 import torch
-
-from cuvis_ai_unet.net import DynUNetBackbone
-from cuvis_ai_unet.tiling import (
+from cuvis_ai_core.utils.tiling import (
     compute_tile_offsets,
     gaussian_weight_map,
     pad_hw_to_multiple,
     sliding_window_inference,
 )
+
+from cuvis_ai_unet.net import DynUNetBackbone
 
 pytestmark = pytest.mark.unit
 
