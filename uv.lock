@@ -898,7 +898,6 @@ dev = [
 ]
 notebooks = [
     { name = "cuvis-ai" },
-    { name = "cuvis-ai-core" },
     { name = "cuvis-ai-dataloader", extra = ["coco", "cu3s"] },
     { name = "huggingface-hub" },
     { name = "jupyter" },
@@ -916,7 +915,6 @@ requires-dist = [
     { name = "bandit", marker = "extra == 'dev'" },
     { name = "cuvis-ai", marker = "extra == 'notebooks'", specifier = ">=0.11" },
     { name = "cuvis-ai-core", specifier = ">=0.18.5" },
-    { name = "cuvis-ai-core", marker = "extra == 'notebooks'", specifier = ">=0.18.4" },
     { name = "cuvis-ai-dataloader", extras = ["coco", "cu3s"], marker = "extra == 'notebooks'", specifier = ">=0.8.2" },
     { name = "cuvis-ai-schemas", specifier = ">=0.8.0" },
     { name = "detect-secrets", marker = "extra == 'dev'" },
