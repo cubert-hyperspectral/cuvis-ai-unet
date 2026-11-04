@@ -91,6 +91,14 @@ def main() -> None:
         help="N fg-biased crops per frame per epoch via the dataloader",
     )
     ap.add_argument(
+        "--crops-per-frame",
+        type=int,
+        default=1,
+        help="N fg-biased crops taken from every frame inside the graph after one read (the "
+        "loader ships each frame once; a step sees --batch x N crops). --samples-per-frame "
+        "gives the same crops per epoch but reads the frame once per crop",
+    )
+    ap.add_argument(
         "--val-every",
         type=int,
         default=0,
@@ -121,6 +129,8 @@ def main() -> None:
     ap.add_argument("--unet-manifest", default=str(eng.UNET_MANIFEST))
     ap.add_argument("--augment-manifest", default=str(eng.AUGMENT_MANIFEST))
     args = ap.parse_args()
+    if args.crops_per_frame > 1 and (args.samples_per_frame or 1) > 1:
+        ap.error("use --crops-per-frame or --samples-per-frame, not both")
 
     eng.register_plugins(args.unet_manifest, args.augment_manifest)
     pipe = eng.build_graph(
@@ -134,6 +144,7 @@ def main() -> None:
         normalizer=args.normalizer,
         max_init_frames=args.max_init_frames,
         fg_percent=args.fg_percent,
+        crops_per_frame=args.crops_per_frame,
         hflip_prob=args.hflip_prob,
         vflip_prob=args.vflip_prob,
         dice_weight=args.dice_weight,

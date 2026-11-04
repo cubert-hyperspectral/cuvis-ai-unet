@@ -88,6 +88,7 @@ def build_graph(
     normalizer: str = "zscore",
     max_init_frames: int = 100,
     fg_percent: float = 0.5,
+    crops_per_frame: int = 1,
     hflip_prob: float = 0.5,
     vflip_prob: float = 0.5,
     augment_seed: int = 0,
@@ -105,6 +106,11 @@ def build_graph(
     per-sample z-score). The running-stats modes need the ZScoreNormalizer
     running-stats feature (pending upstream in cuvis-ai PR #53) and raise a
     clear error on an installation that predates it.
+
+    ``crops_per_frame`` > 1 takes that many foreground-biased crops from every frame inside
+    the graph (``RandomForegroundBiasedMultiCrop``), so the loader reads each frame once;
+    the optimizer step then sees ``batch_size * crops_per_frame`` crops. The normalizer
+    stays upstream of the crop and sees whole frames.
     """
     from cuvis_ai.node.data import CU3SDataNode
     from cuvis_ai.node.normalization import ZScoreNormalizer
@@ -131,6 +137,17 @@ def build_graph(
     else:
         raise ValueError(f"unknown normalizer {normalizer!r}")
 
+    if int(crops_per_frame) < 1:
+        raise ValueError(f"crops_per_frame must be >= 1, got {crops_per_frame!r}")
+    crop: dict[str, Any] = {
+        "type": "RandomForegroundBiasedCrop",
+        "size": [patch, patch],
+        "fg_percent": fg_percent,
+        "probabilistic": True,
+    }
+    if int(crops_per_frame) > 1:
+        crop.update(type="RandomForegroundBiasedMultiCrop", samples_per_input=int(crops_per_frame))
+
     source = CU3SDataNode(name="DataSource")
     norm = ZScoreNormalizer(name="Norm", **norm_kwargs)
     augment = AugmentationCompose(
@@ -138,12 +155,7 @@ def build_graph(
         seed=augment_seed,
         extra_transform_modules=["cuvis_ai_unet.transforms"],
         transforms=[
-            {
-                "type": "RandomForegroundBiasedCrop",
-                "size": [patch, patch],
-                "fg_percent": fg_percent,
-                "probabilistic": True,
-            },
+            crop,
             {"type": "RandomHorizontalFlip", "prob": hflip_prob},
             {"type": "RandomVerticalFlip", "prob": vflip_prob},
         ],
