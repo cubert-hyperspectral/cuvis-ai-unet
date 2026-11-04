@@ -124,8 +124,7 @@ rely on:
 
 - `cuvis_ai_unet/blocks.py` — mode-aware convolution building blocks.
 - `cuvis_ai_unet/net.py` — the pure-PyTorch U-Net module.
-- `cuvis_ai_unet/tiling.py` — sliding-window inference + boundary padding (tile batching lives here).
-- `cuvis_ai_unet/node/dynunet.py` — the `DynUNet` cuvis-ai node (BHWC port wrapper).
+- `cuvis_ai_unet/node/dynunet.py` — the `DynUNet` cuvis-ai node (BHWC port wrapper); sliding-window inference and boundary padding come from `cuvis_ai_core.utils.tiling`.
 - `cuvis_ai_unet/node/losses.py` — `DiceLoss` and `CrossEntropyLoss` loss nodes.
 - `cuvis_ai_unet/transforms.py` — vendored `RandomForegroundBiasedCrop` (leaves once upstream ships).
 - `examples/lentils/` — shared engine + `train.py` / `evaluate.py` / `profile_pipeline.py` / `gen_splits.py`.

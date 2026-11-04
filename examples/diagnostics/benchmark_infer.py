@@ -1,6 +1,6 @@
 """Tiled sliding-window inference timing: CPU vs GPU(fp32) vs GPU(autocast).
 
-Times the exact tiled-predict path (cuvis_ai_unet.tiling.sliding_window_inference)
+Times the exact tiled-predict path (cuvis_ai_core.utils.tiling.sliding_window_inference)
 on one real lentils frame, for 3D@128 and 2D@128 with the deep [32..512] net.
 CPU is timed on a small region (tractable) and extrapolated per-tile; GPU is timed
 on the full frame. Weights are untrained — timing is weight-independent."""

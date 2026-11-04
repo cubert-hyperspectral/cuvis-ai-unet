@@ -1,5 +1,5 @@
 """The boundary-padding and sliding-window utilities (cuvis-ai-core's ``utils.tiling``) as the
-node uses them, and the deprecated ``cuvis_ai_unet.tiling`` re-export."""
+node uses them."""
 
 import pytest
 import torch
@@ -94,16 +94,3 @@ def test_tile_batch_matches_serial(overlap: float, tile_batch: int) -> None:
         batched = sliding_window_inference(net, x, (16, 16), overlap=overlap, tile_batch=tile_batch)
     assert batched.shape == serial.shape == (2, 4, 50, 41)
     assert torch.allclose(serial, batched, atol=1e-6)
-
-
-def test_deprecated_module_reexports_core_helpers() -> None:
-    import importlib
-    import sys
-
-    import cuvis_ai_core.utils.tiling as core_tiling
-
-    sys.modules.pop("cuvis_ai_unet.tiling", None)
-    with pytest.warns(DeprecationWarning, match="cuvis_ai_core.utils.tiling"):
-        legacy = importlib.import_module("cuvis_ai_unet.tiling")
-    for name in legacy.__all__:
-        assert getattr(legacy, name) is getattr(core_tiling, name)
