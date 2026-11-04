@@ -69,4 +69,9 @@ def test_fold_targets_maps_ids_above_the_last_class() -> None:
     targets = torch.tensor([[0, 1, 2, 7, 255, -100]])
     assert fold_targets(targets, 2).tolist() == [[0, 1, 1, 1, 1, -100]]
     assert fold_targets(targets, 2, ignore_index=255).tolist() == [[0, 1, 1, 1, 255, -100]]
-    assert fold_targets(targets, 4, ignore_index=-100).tolist() == [[0, 1, 2, 3, 3, -100]]
+
+
+def test_fold_targets_leaves_multiclass_targets_alone() -> None:
+    # Only a two-class net folds; a multiclass net keeps out-of-range ids so the loss raises.
+    targets = torch.tensor([[0, 1, 2, 7, -100]])
+    assert fold_targets(targets, 4, ignore_index=-100).tolist() == targets.tolist()

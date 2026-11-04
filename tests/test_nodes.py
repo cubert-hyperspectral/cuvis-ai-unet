@@ -272,3 +272,10 @@ def test_ce_fold_keeps_the_ignore_index() -> None:
         ignore_index=255,
     )
     assert torch.allclose(got, want)
+
+
+def test_ce_multiclass_out_of_range_ids_still_raise() -> None:
+    logits = torch.randn(B, H, W, 4)
+    targets = torch.full((B, H, W), 7)
+    with pytest.raises((IndexError, RuntimeError)):
+        CrossEntropyLoss().forward(logits, targets)
