@@ -66,6 +66,10 @@ dev = [
 # notebooks, not a hard pin here.
 notebooks = [
   "cuvis-ai-dataloader[cu3s,coco]>=0.8.2",  # cu3s_multi: bounded open recordings (max_open_sessions)
+  # Core 0.19.3+ runs the post-fit steps on the readers the fit already holds instead of
+  # reopening every val recording, which with the Cuvis SDK on the GPU ran an 8 GB card out of
+  # memory.
+  "cuvis-ai-core>=0.19.3",
   "cuvis-ai>=0.11",  # builtin nodes the notebooks wire (CU3SDataNode, ZScoreNormalizer, TensorBoard monitor)
   # cuvis-ai-augment (AugmentationCompose) is git-tag-released, not on PyPI, so it cannot live in
   # this extra: install it alongside, e.g.

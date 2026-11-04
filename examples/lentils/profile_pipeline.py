@@ -28,6 +28,13 @@ def main() -> None:
     ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument("--split", default="test", choices=["train", "val", "test"])
     ap.add_argument("--frames", type=int, default=8)
+    ap.add_argument(
+        "--sdk-cuda",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="process the cubes with the Cuvis SDK on the GPU; --no-sdk-cuda processes them on "
+        "the CPU (no SDK memory on the GPU, slower)",
+    )
     ap.add_argument("--skip", type=int, default=2, help="warmup forwards discarded per combination")
     ap.add_argument("--overlaps", default="0,0.25,0.5", help="comma-separated tile overlaps")
     ap.add_argument("--tile-batches", default="1,16", help="comma-separated tile_batch values")
@@ -49,6 +56,7 @@ def main() -> None:
         skip=args.skip,
         overlaps=tuple(float(x) for x in args.overlaps.split(",")),
         tile_batches=tuple(int(x) for x in args.tile_batches.split(",")),
+        sdk_cuda=args.sdk_cuda,
     )
 
 

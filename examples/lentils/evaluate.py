@@ -54,6 +54,13 @@ def main() -> None:
         "--tile-batch", type=int, default=None, help="override the artifact's tile batch"
     )
     ap.add_argument("--max-frames", type=int, default=0, help="0 = all frames in the split")
+    ap.add_argument(
+        "--sdk-cuda",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="process the cubes with the Cuvis SDK on the GPU; --no-sdk-cuda processes them on "
+        "the CPU (no SDK memory on the GPU, slower)",
+    )
     ap.add_argument("--device", default=None)
     ap.add_argument("--out", default=None, help="also write metrics JSON here")
     ap.add_argument("--unet-manifest", default=str(eng.UNET_MANIFEST))
@@ -82,6 +89,7 @@ def main() -> None:
         tile_overlap=args.tile_overlap,
         tile_batch=args.tile_batch,
         max_frames=args.max_frames,
+        sdk_cuda=args.sdk_cuda,
     )
     print(
         f"[eval] frames: {m['frames']} total | {m['object_frames']} object | "

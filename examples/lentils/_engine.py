@@ -205,9 +205,10 @@ def make_datamodule(
     batch_size: int = 8,
     num_workers: int = 0,
     samples_per_frame: int | None = None,
-    max_open_sessions: int = 15,
-    read_ahead: int = 0,
+    max_open_sessions: int = 3,
+    read_ahead: int = 1,
     cuda_cubes: bool = False,
+    sdk_cuda: bool = True,
 ):
     """Build the multi-file cu3s datamodule from a universe.csv + splits.json.
 
@@ -220,10 +221,11 @@ def make_datamodule(
     datamodule to the *train* split only — val/test stay one crop per frame.
 
     Reader options: ``num_workers`` stays 0 (the cuvis SDK reads in this process; workers
-    cannot use it on the GPU), ``max_open_sessions`` recordings stay open per loader (15
-    covers every lentils recording; each holds about 0.3 to 0.6 GB of GPU memory),
+    cannot use it on the GPU), ``max_open_sessions`` recordings stay open per loader (each
+    holds about 0.3 to 0.6 GB of GPU memory, and every loader keeps its own; 3 fits an 8 GB GPU),
     ``read_ahead`` frames are read ahead of the model step (the train loader ignores it when
-    ``samples_per_frame > 1``), ``cuda_cubes`` keeps the cubes on the GPU.
+    ``samples_per_frame > 1``), ``cuda_cubes`` keeps the cubes on the GPU, and ``sdk_cuda=False``
+    processes them on the CPU (no SDK memory on the GPU, slower).
     """
     from cuvis_ai_core.data.splits_io import load_splits
     from cuvis_ai_dataloader.data import MultiCu3sDataModule
@@ -236,6 +238,7 @@ def make_datamodule(
         "max_open_sessions": max_open_sessions,
         "read_ahead": read_ahead,
         "cuda_cubes": cuda_cubes,
+        "sdk_cuda": sdk_cuda,
     }
     if samples_per_frame is not None:
         kwargs["samples_per_frame"] = samples_per_frame
@@ -516,7 +519,13 @@ def auroc(scores: np.ndarray, labels: np.ndarray) -> float:
     return (ranks[labels].sum() - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
 
 
-def split_dataset(universe_csv: str | Path, splits_json: str | Path, split: str = "test"):
+def split_dataset(
+    universe_csv: str | Path,
+    splits_json: str | Path,
+    split: str = "test",
+    *,
+    sdk_cuda: bool = True,
+):
     """The frames of a split as a dataset, resolved from the universe.csv + splits.json.
 
     Uses the datamodule's own selector resolution so the frames evaluated are
@@ -524,7 +533,7 @@ def split_dataset(universe_csv: str | Path, splits_json: str | Path, split: str 
     multiplicity, which never touches val/test). ``dataset[i]`` reads frame i from
     its cu3s recording: ``cube`` ``[H, W, C]`` and the category-id ``mask`` ``[H, W]``.
     """
-    dm = make_datamodule(universe_csv, splits_json, batch_size=1)
+    dm = make_datamodule(universe_csv, splits_json, batch_size=1, sdk_cuda=sdk_cuda)
     dm.setup(stage=None)
     return {"train": dm.train_ds, "val": dm.val_ds, "test": dm.test_ds}[split]
 
@@ -543,6 +552,7 @@ def evaluate(
     tile_overlap: float | None = None,
     tile_batch: int | None = None,
     max_frames: int = 0,
+    sdk_cuda: bool = True,
 ) -> dict[str, Any]:
     """Frame-by-frame tiled evaluation: pixel fg-IoU/Dice + image-level AUROC.
 
@@ -563,7 +573,7 @@ def evaluate(
     device = next(iter(net.parameters())).device
     infer = Context(stage=ExecutionStage.INFERENCE, batch_idx=0, global_step=0)
 
-    dataset = split_dataset(universe_csv, splits_json, split)
+    dataset = split_dataset(universe_csv, splits_json, split, sdk_cuda=sdk_cuda)
     n_frames = min(len(dataset), max_frames) if max_frames else len(dataset)
 
     ious, dices = [], []
@@ -612,6 +622,7 @@ def profile(
     skip: int = 2,
     overlaps: tuple[float, ...] = (0.0, 0.25, 0.5),
     tile_batches: tuple[int, ...] = (1, 16),
+    sdk_cuda: bool = True,
 ) -> None:
     """Per-node inference timing via cuvis-ai's built-in pipeline profiler.
 
@@ -631,7 +642,7 @@ def profile(
     net = nodes["DynUNet"]
     device = next(iter(net.parameters())).device
 
-    dataset = split_dataset(universe_csv, splits_json, split)
+    dataset = split_dataset(universe_csv, splits_json, split, sdk_cuda=sdk_cuda)
     batches, load_ms = [], []
     for i in range(min(frames, len(dataset))):
         t0 = time.perf_counter()

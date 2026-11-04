@@ -6,6 +6,11 @@ Champion reproduction (2D @ 128, AdaCLIP split, expect fg-IoU ≈ 0.79 on eval):
         --splits-json <lentils>/splits/adaclip.json \
         --epochs 20 --batch 8 --samples-per-frame 4 --out runs/2d128
 
+On an 8 GB GPU (a laptop) add ``--batch 2 --features 16 32 64 128 256``: every frame of a batch
+reaches the GPU whole (1000 x 1080 x 61, 264 MB as float32) before it is cropped, and the Cuvis
+SDK needs room next to it. One epoch then peaks at about 6.5 GB. ``--no-sdk-cuda`` processes the
+cubes on the CPU instead (no SDK memory on the GPU, slower).
+
 ``<lentils>`` is the HF lentils download (``PublicDatasets.download_dataset(
 "industrial_fod_lentils", ...)``): the frames are read straight from its cu3s recordings,
 ``universe.csv`` lists them and ``splits/adaclip.json`` is the 808 / 148 / 180 split.
@@ -58,19 +63,26 @@ def main() -> None:
     ap.add_argument(
         "--max-open-sessions",
         type=int,
-        default=15,
-        help="cu3s recordings kept open per loader (15 = all lentils recordings; each holds "
-        "about 0.3 to 0.6 GB of GPU memory; use 3 on an 8 GB GPU)",
+        default=3,
+        help="cu3s recordings kept open per loader (each holds about 0.3 to 0.6 GB of GPU "
+        "memory, and every loader keeps its own; the default fits an 8 GB GPU)",
     )
     ap.add_argument(
         "--read-ahead",
         type=int,
-        default=0,
+        default=1,
         help="frames read ahead of the model step (the train loader ignores it when "
         "--samples-per-frame > 1)",
     )
     ap.add_argument(
         "--cuda-cubes", action="store_true", help="keep the cubes on the GPU (needs the room)"
+    )
+    ap.add_argument(
+        "--sdk-cuda",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="process the cubes with the Cuvis SDK on the GPU; --no-sdk-cuda processes them on "
+        "the CPU (no SDK memory on the GPU, slower)",
     )
     ap.add_argument(
         "--samples-per-frame",
@@ -140,6 +152,7 @@ def main() -> None:
         max_open_sessions=args.max_open_sessions,
         read_ahead=args.read_ahead,
         cuda_cubes=args.cuda_cubes,
+        sdk_cuda=args.sdk_cuda,
     )
     eng.train(
         pipe,
