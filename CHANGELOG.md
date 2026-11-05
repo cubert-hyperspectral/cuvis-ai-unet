@@ -16,6 +16,12 @@
 - The `notebooks` extra floors `cuvis-ai-core>=0.19.3` (lock 0.19.1 to 0.19.3): its post-fit steps reuse the readers the fit already holds instead of reopening every val recording next to the open ones, which with the Cuvis SDK on the GPU ran an 8 GB card out of memory.
 - The lentils examples and notebooks pin cuvis-ai-augment v0.4.3 (was v0.3.2; `examples/lentils/augment.yaml`, the notebooks' Colab install, the `notebooks` extra note). v0.3.2 passes `execution_stages=` to the node constructor, which the cuvis-ai-core these examples now need (0.19.3 or later) rejects since 0.15.0. v0.4.x ships `RandomForegroundBiasedCrop` itself, so the vendored copy in `cuvis_ai_unet.transforms` stands down (its registration is guarded); with `probabilistic=True`, which the examples and notebooks use, the two crops are the same code.
 
+## 0.5.0 - 2026-11-05
+
+### Added
+
+- `DynUNet.export_module()`: an ONNX export adapter for configurations without tiling, running the direct inference path (BHWC to NCHW, grid padding, the backbone, cropping, back to BHWC) with tensor ops only. A tiled configuration (`tile_size` set) raises `NotImplementedError` naming the hparam to change, since sliding-window inference branches on the input size and cannot be exported as a static graph. Tagged `NodeTag.ONNX`. Floors `cuvis-ai-core>=0.19.2`; the dev extra adds `cuvis-ai-core[onnx]` and `cuvis-ai[onnx]` for the parity tests and the deploy-folder round trip (`torch`/`torchvision` unchanged).
+
 ## 0.4.0 - 2026-11-04
 
 ### Changed

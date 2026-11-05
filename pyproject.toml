@@ -36,7 +36,7 @@ classifiers = [
 ]
 
 dependencies = [
-  "cuvis-ai-core>=0.18.5",
+  "cuvis-ai-core>=0.19.2",
   "cuvis-ai-schemas>=0.8.0",
   "torch>=2.1",
   # torchvision is declared directly so the cuda-group cu128 source pin below keeps the
@@ -59,6 +59,11 @@ dev = [
   "detect-secrets",
   "pip-audit",
   "twine>=6.2.0",
+  # The span exporter's parity check (torch.onnx.export dynamo + ONNX Runtime) and the
+  # ExportedSpan round trip through cuvis-ai[onnx]; onnxscript/onnxruntime stay optional
+  # at runtime (tests skip without them) but are pinned here so CI exercises both paths.
+  "cuvis-ai-core[onnx]>=0.19.2",
+  "cuvis-ai[onnx]>=0.20.2",
 ]
 # Runtime deps for the lentils tutorial notebooks / HF end-to-end path: `uv sync --extra notebooks`.
 # `cuvis-ai-dataloader[cu3s]` pulls the `cuvis` SDK binding transitively, but its version must match
