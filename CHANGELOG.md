@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2026-11-05
+
+### Added
+
+- `DynUNet.export_module()`: an ONNX export adapter for configurations without tiling, running the direct inference path (BHWC to NCHW, grid padding, the backbone, cropping, back to BHWC) with tensor ops only. A tiled configuration (`tile_size` set) raises `NotImplementedError` naming the hparam to change, since sliding-window inference branches on the input size and cannot be exported as a static graph. Tagged `NodeTag.ONNX`. Floors `cuvis-ai-core>=0.19.2`; the dev extra adds `cuvis-ai-core[onnx]` and `cuvis-ai[onnx]` for the parity tests and the deploy-folder round trip (`torch`/`torchvision` unchanged).
+
 ## 0.4.0 - 2026-11-04
 
 ### Changed

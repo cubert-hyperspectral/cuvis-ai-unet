@@ -42,6 +42,29 @@ from cuvis_ai_unet.blocks import Mode, SkipKind
 from cuvis_ai_unet.net import DynUNetBackbone
 
 
+class DynUNetExportAdapter(torch.nn.Module):
+    """Tensor-only stand-in for :meth:`DynUNet.forward`, for the span exporter.
+
+    Runs the same steps as the node's direct (untiled) inference path: BHWC to
+    NCHW, grid padding, the backbone, cropping, back to BHWC. No ``.item()``,
+    no numpy, no branch on a tensor value, so the dynamo exporter can trace it.
+    Reads the net's weights and buffers; never mutates them.
+    """
+
+    def __init__(self, net: DynUNetBackbone, spatial_grid: tuple[int, int]) -> None:
+        super().__init__()
+        self.net = net
+        self.spatial_grid = spatial_grid
+
+    def forward(self, data: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Segment a BHWC cube; return BHWC per-pixel class logits."""
+        x = data.permute(0, 3, 1, 2).contiguous()  # BHWC -> NCHW (C = bands)
+        x_p, revert = pad_hw_to_multiple(x, self.spatial_grid)
+        logits = self.net(x_p)[revert]
+        logits = logits.permute(0, 2, 3, 1).contiguous()  # -> BHWC [B, H, W, num_classes]
+        return {"logits": logits}
+
+
 class DynUNet(Node):
     """Configurable U-Net for hyperspectral segmentation (2D / factorised 2.5D / 3D).
 
@@ -90,6 +113,8 @@ class DynUNet(Node):
             NodeTag.DIFFERENTIABLE,
             NodeTag.INFERENCE,
             NodeTag.TORCH,
+            # export_module() supports configurations without tiling; see that method.
+            NodeTag.ONNX,
         }
     )
 
@@ -269,3 +294,24 @@ class DynUNet(Node):
 
         logits = logits.permute(0, 2, 3, 1).contiguous()  # -> BHWC [B, H, W, num_classes]
         return {"logits": logits}
+
+    # ----------------------------------------------------------------- export
+
+    def export_module(self) -> torch.nn.Module | None:
+        """A tensor-only adapter for configurations without tiling.
+
+        The adapter runs the direct (untiled) inference path with tensor ops
+        only, so the dynamo exporter can trace it. Tiled configurations
+        (``tile_size`` set) have no adapter: sliding-window inference branches
+        on the input size and cannot be exported as a static graph. Set
+        ``tile_size`` to ``None`` to export this node, or keep the cut outside
+        this node's span.
+        """
+        if self.tile_size is not None:
+            raise NotImplementedError(
+                f"DynUNet {self.name!r} cannot be exported: tile_size={self.tile_size} "
+                "enables sliding-window inference, whose tile count depends on the "
+                "input size. Set tile_size=None to export this node, or cut the span "
+                "so it stays outside."
+            )
+        return DynUNetExportAdapter(self.net, self.net.spatial_grid)
