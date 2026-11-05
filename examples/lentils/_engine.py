@@ -102,7 +102,8 @@ def build_graph(
     ``Standardize`` (cuvis-ai 0.21.0 or later).
 
     ``crops_per_frame`` > 1 takes that many foreground-biased crops from every frame inside
-    the graph (``RandomForegroundBiasedMultiCrop``), so the loader reads each frame once;
+    the graph (cuvis-ai-augment's ``RandomForegroundBiasedCrop`` with ``samples_per_input``,
+    augment 0.5.0 or later), so the loader reads each frame once;
     the optimizer step then sees ``batch_size * crops_per_frame`` crops. The normalizer
     stays upstream of the crop and sees whole frames.
     """
@@ -136,7 +137,7 @@ def build_graph(
         "probabilistic": True,
     }
     if int(crops_per_frame) > 1:
-        crop.update(type="RandomForegroundBiasedMultiCrop", samples_per_input=int(crops_per_frame))
+        crop["samples_per_input"] = int(crops_per_frame)
 
     source = CU3SDataNode(name="DataSource")
     norm = Standardize(name="Norm", **norm_kwargs)

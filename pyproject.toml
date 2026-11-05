@@ -80,7 +80,7 @@ notebooks = [
   "cuvis-ai>=0.21.0",
   # cuvis-ai-augment (AugmentationCompose) is git-tag-released, not on PyPI, so it cannot live in
   # this extra: install it alongside, e.g.
-  #   pip install "cuvis-ai-augment @ git+https://github.com/cubert-hyperspectral/cuvis-ai-augment.git@v0.4.3"
+  #   pip install "cuvis-ai-augment @ git+https://github.com/cubert-hyperspectral/cuvis-ai-augment.git@v0.5.0"
   "huggingface_hub",
   "matplotlib",
   "jupyter",

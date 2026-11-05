@@ -29,8 +29,8 @@ Each frame carries `cube [H,W,61]`, `wavelengths [61]` and `mask [H,W] int32` wi
 category ids rasterized from the polygons (0 = background); with two classes the losses fold every
 object category into the foreground class.
 
-Several foreground-biased crops per frame come from the crop node
-(`RandomForegroundBiasedMultiCrop`, `samples_per_input` = N), which cuts N fresh crops from every
+Several foreground-biased crops per frame come from the crop node (cuvis-ai-augment's
+`RandomForegroundBiasedCrop` with `samples_per_input` = N), which cuts N fresh crops from every
 frame after one read, so the universe holds each frame once. The data module's
 `samples_per_frame` gives the same crops per epoch by putting every frame into the loader N
 times, which reads the whole frame once per crop.
