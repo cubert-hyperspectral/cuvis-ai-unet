@@ -108,7 +108,7 @@ rely on:
 | requirement | why | status |
 |---|---|---|
 | `cuvis-ai-augment` (not on PyPI) | `AugmentationCompose` + the crop transform in training | install from git; the examples ship a git-tag manifest |
-| running-stats `ZScoreNormalizer` | champion config normalizes with dataset statistics | pending in [cuvis-ai PR #53](https://github.com/cubert-hyperspectral/cuvis-ai/pull/53); until it merges, train with `--normalizer persample` or run from a checkout of that branch |
+| cuvis-ai 0.21.0 or later | `Standardize` fits the champion's z-score statistics on train frames (`--normalizer zscore`, the notebooks) | the `notebooks` extra floors it or run from a checkout of that branch |
 | Cuvis C++ SDK + `cuvis-ai-dataloader[cu3s]` | reading the `.cu3s` recordings (the examples and notebooks read them directly) | `uv sync --extra notebooks` + a machine-matched `cuvis` pin (documented in the notebooks) |
 
 ## Known limitations

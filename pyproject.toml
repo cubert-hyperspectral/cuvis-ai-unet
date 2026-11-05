@@ -70,7 +70,9 @@ notebooks = [
   # reopening every val recording, which with the Cuvis SDK on the GPU ran an 8 GB card out of
   # memory.
   "cuvis-ai-core>=0.19.3",
-  "cuvis-ai>=0.11",  # builtin nodes the notebooks wire (CU3SDataNode, ZScoreNormalizer, TensorBoard monitor)
+  # Standardize with fitted statistics (the champion z-score) ships in cuvis-ai 0.21.0, which
+  # removed ZScoreNormalizer; the notebooks also wire CU3SDataNode and the TensorBoard monitor.
+  "cuvis-ai>=0.21.0",
   # cuvis-ai-augment (AugmentationCompose) is git-tag-released, not on PyPI, so it cannot live in
   # this extra: install it alongside, e.g.
   #   pip install "cuvis-ai-augment @ git+https://github.com/cubert-hyperspectral/cuvis-ai-augment.git@v0.4.3"

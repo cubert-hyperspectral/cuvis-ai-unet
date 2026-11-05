@@ -727,7 +727,7 @@ wheels = [
 
 [[package]]
 name = "cuvis-ai"
-version = "0.20.1"
+version = "0.21.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cuvis-ai-core" },
@@ -763,9 +763,9 @@ dependencies = [
     { name = "transformers" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/be/2a/015c2fe71534ba21cebf14ec7eb37f3285bb8127d7a6fca646a99156d67f/cuvis_ai-0.20.1.tar.gz", hash = "sha256:ca742fd92cbf490e4ed670ee2497148ed2cc3f7e11a7b65039fafe6815f31c87", size = 17188601, upload-time = "2026-11-03T11:52:20.561Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/b6/097d929397fd74614b4b4cd67b02d5963f80ae0d4df8192d44baee9f96cb/cuvis_ai-0.21.0.tar.gz", hash = "sha256:042d92d6a03f99c40e52a3e9aacd66b8fef4bb1e0e073314b58561c10fa9d7d9", size = 17205834, upload-time = "2026-11-04T20:30:50.841Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/14/8e436e7cdc4d120691d8a71db63b6507861bde6cf4462bba2d06c1f54f83/cuvis_ai-0.20.1-py3-none-any.whl", hash = "sha256:785531536eba335860916f10cb01b18bf9c83c584d2cade02ff8aa22e2203332", size = 515285, upload-time = "2026-11-03T11:52:17.914Z" },
+    { url = "https://files.pythonhosted.org/packages/46/fd/d5e5b1a0318300d8346de26f4cb08a926e0e0d277b976010865d721d6ae7/cuvis_ai-0.21.0-py3-none-any.whl", hash = "sha256:d42757cc382d4d755d553904effd5d8175c0f5bfa31e0964a0ee20db31e08fa0", size = 522795, upload-time = "2026-11-04T20:30:47.908Z" },
 ]
 
 [[package]]
@@ -910,7 +910,7 @@ cuda = [
 [package.metadata]
 requires-dist = [
     { name = "bandit", marker = "extra == 'dev'" },
-    { name = "cuvis-ai", marker = "extra == 'notebooks'", specifier = ">=0.11" },
+    { name = "cuvis-ai", marker = "extra == 'notebooks'", specifier = ">=0.21.0" },
     { name = "cuvis-ai-core", specifier = ">=0.18.5" },
     { name = "cuvis-ai-core", marker = "extra == 'notebooks'", specifier = ">=0.19.3" },
     { name = "cuvis-ai-dataloader", extras = ["coco", "cu3s"], marker = "extra == 'notebooks'", specifier = ">=0.8.2" },

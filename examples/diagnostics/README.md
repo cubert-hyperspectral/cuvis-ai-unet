@@ -28,3 +28,8 @@ diagnostic checkpoints are index-keyed against it (`2.zscore_mean` = node 2), so
 reordering the list silently misassigns weights. Their `connections:` were
 rewired to run Norm upstream of Augment (numerically equivalent for
 running-stats z-score; the loaders hard-fail on any key mismatch).
+
+The adaclip configs, and the scripts that default to them, build cuvis-ai's `ZScoreNormalizer`,
+which cuvis-ai 0.21.0 removed, and the raw checkpoints carry its `zscore_mean` / `zscore_std`
+buffers: run them with cuvis-ai 0.20.x. `../lentils/` and the notebooks use `Standardize`
+(cuvis-ai 0.21.0 or later).

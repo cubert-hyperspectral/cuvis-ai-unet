@@ -20,7 +20,6 @@ orders are numerically equivalent (an elementwise affine commutes with cropping)
 
 from __future__ import annotations
 
-import inspect
 import json
 import subprocess
 import time
@@ -71,10 +70,6 @@ def register_plugins(
     return registry
 
 
-def _supports_running_stats(cls: type) -> bool:
-    return "use_running_stats" in inspect.signature(cls.__init__).parameters
-
-
 def build_graph(
     *,
     mode: str = "2d",
@@ -101,11 +96,10 @@ def build_graph(
 ) -> CuvisPipeline:
     """Build the segmentation pipeline in code and return it (untrained).
 
-    ``normalizer`` is one of ``zscore`` (dataset-level running stats, scalar),
-    ``zscore-perband`` (running stats per band), or ``persample`` (classic
-    per-sample z-score). The running-stats modes need the ZScoreNormalizer
-    running-stats feature (pending upstream in cuvis-ai PR #53) and raise a
-    clear error on an installation that predates it.
+    ``normalizer`` is one of ``zscore`` (one mean and std fitted over the first
+    ``max_init_frames`` train frames), ``zscore-perband`` (fitted per band) or
+    ``persample`` (every frame by its own per-band statistics), all cuvis-ai's
+    ``Standardize`` (cuvis-ai 0.21.0 or later).
 
     ``crops_per_frame`` > 1 takes that many foreground-biased crops from every frame inside
     the graph (``RandomForegroundBiasedMultiCrop``), so the loader reads each frame once;
@@ -113,27 +107,23 @@ def build_graph(
     stays upstream of the crop and sees whole frames.
     """
     from cuvis_ai.node.data import CU3SDataNode
-    from cuvis_ai.node.normalization import ZScoreNormalizer
+    from cuvis_ai.node.pretreatments.standardize import Standardize
     from cuvis_ai_augment.node.compose import AugmentationCompose
 
     from cuvis_ai_unet.node.dynunet import DynUNet
     from cuvis_ai_unet.node.losses import CrossEntropyLoss, DiceLoss
 
+    norm_kwargs: dict[str, Any]
     if normalizer in ("zscore", "zscore-perband"):
-        if not _supports_running_stats(ZScoreNormalizer):
-            raise RuntimeError(
-                f"normalizer={normalizer!r} needs ZScoreNormalizer running-stats "
-                "support (pending in cuvis-ai PR #53). Install cuvis-ai from that "
-                "branch, or use --normalizer persample."
-            )
-        norm_kwargs: dict[str, Any] = {
-            "use_running_stats": True,
-            "max_init_frames": max_init_frames,
+        # Fitted in the statistical phase on whole frames (the normalizer runs before the crop).
+        norm_kwargs = {
+            "axis": "global" if normalizer == "zscore" else "channel",
+            "stats": "fit",
+            "max_initialization_frames": max_init_frames,
         }
-        if normalizer == "zscore-perband":
-            norm_kwargs.update(per_band=True, num_channels=in_channels)
     elif normalizer == "persample":
-        norm_kwargs = {}
+        # The former per-sample ZScoreNormalizer, bit for bit.
+        norm_kwargs = {"axis": "spatial", "ddof": 0, "eps": 1e-6, "eps_mode": "add"}
     else:
         raise ValueError(f"unknown normalizer {normalizer!r}")
 
@@ -149,7 +139,7 @@ def build_graph(
         crop.update(type="RandomForegroundBiasedMultiCrop", samples_per_input=int(crops_per_frame))
 
     source = CU3SDataNode(name="DataSource")
-    norm = ZScoreNormalizer(name="Norm", **norm_kwargs)
+    norm = Standardize(name="Norm", **norm_kwargs)
     augment = AugmentationCompose(
         name="Augment",
         seed=augment_seed,
@@ -175,8 +165,8 @@ def build_graph(
     ce = CrossEntropyLoss(name="CrossEntropyLoss", weight=ce_weight)
 
     edges = [
-        (source.outputs.cube, norm.inputs.data),
-        (norm.outputs.normalized, augment.inputs.cube),
+        (source.outputs.cube, norm.inputs.cube),
+        (norm.outputs.cube, augment.inputs.cube),
         (source.outputs.mask, augment.inputs.mask),
         (augment.outputs.cube, net.inputs.data),
         (net.outputs.logits, dice.inputs.logits),
@@ -596,7 +586,7 @@ def evaluate(
             mask = _as_tensor(frame["mask"]).to(device)
             has_fg = int((mask >= 1).sum()) > 0
             cube = _as_tensor(frame["cube"]).float().unsqueeze(0).to(device)
-            normed = norm.forward(data=cube)["normalized"]
+            normed = norm.forward(cube=cube)["cube"]
             logits = net.forward(normed, context=infer)["logits"][0]  # [H,W,K]
             prob = torch.softmax(logits.float(), dim=-1)[..., 1]  # fg prob [H,W]
             pred = logits.argmax(-1) >= 1

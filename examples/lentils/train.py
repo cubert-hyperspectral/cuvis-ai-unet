@@ -49,9 +49,18 @@ def main() -> None:
     ap.add_argument("--in-channels", type=int, default=61)
     ap.add_argument("--num-classes", type=int, default=2)
     ap.add_argument(
-        "--normalizer", default="zscore", choices=["zscore", "zscore-perband", "persample"]
+        "--normalizer",
+        default="zscore",
+        choices=["zscore", "zscore-perband", "persample"],
+        help="z-score with one mean and std fitted on the first --max-init-frames train frames "
+        "(the champion), fitted per band, or per frame (cuvis-ai Standardize)",
     )
-    ap.add_argument("--max-init-frames", type=int, default=100)
+    ap.add_argument(
+        "--max-init-frames",
+        type=int,
+        default=100,
+        help="train frames the fitted z-score statistics are taken from",
+    )
     ap.add_argument(
         "--fg-percent", type=float, default=0.5, help="foreground-biased crop probability"
     )
