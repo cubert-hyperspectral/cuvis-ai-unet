@@ -4,19 +4,26 @@ Champion reproduction (2D @ 128, AdaCLIP split, expect fg-IoU ≈ 0.79 on eval):
 
     python train.py --universe-csv <lentils>/universe.csv \
         --splits-json <lentils>/splits/adaclip.json \
-        --epochs 20 --batch 8 --samples-per-frame 4 --out runs/2d128
+        --epochs 20 --batch 2 --crops-per-frame 4 --out runs/2d128
 
-On an 8 GB GPU (a laptop) add ``--batch 2 --features 16 32 64 128 256``: every frame of a batch
-reaches the GPU whole (1000 x 1080 x 61, 264 MB as float32) before it is cropped, and the Cuvis
-SDK needs room next to it. One epoch then peaks at about 6.5 GB. ``--no-sdk-cuda`` processes the
-cubes on the CPU instead (no SDK memory on the GPU, slower).
+Every step reads 2 frames once and cuts 4 fresh foreground-biased crops from each, so it trains
+on 8 crops, drawn anew every epoch. ``--batch 8 --samples-per-frame 4`` trains on as many crops
+but reads the whole frame once per crop: over 20 epochs on an RTX 4090 (``--normalizer
+persample``) the read-once run reached test fg-IoU 0.810 in 11716 s from cu3s, the old recipe
+0.814 in 18250 s from NPZ.
+
+On an 8 GB GPU (a laptop) add ``--features 16 32 64 128 256``: every frame of a batch reaches the
+GPU whole (1000 x 1080 x 61, 264 MB as float32) before it is cropped, and the Cuvis SDK needs
+room next to it. ``--no-sdk-cuda`` processes the cubes on the CPU instead (no SDK memory on the
+GPU, slower).
 
 ``<lentils>`` is the HF lentils download (``PublicDatasets.download_dataset(
 "industrial_fod_lentils", ...)``): the frames are read straight from its cu3s recordings,
 ``universe.csv`` lists them and ``splits/adaclip.json`` is the 808 / 148 / 180 split.
-Patches-per-frame multiplicity is ``--samples-per-frame N`` (the base datamodule draws N fresh
-fg-biased crops per train frame per epoch; val/test are unaffected). Evaluate the
-saved artifact with ``evaluate.py``; profile it with ``profile_pipeline.py``.
+``--crops-per-frame N`` cuts N fresh fg-biased crops from every train frame after one read;
+``--samples-per-frame N`` gets them by putting every train frame into the loader N times (one
+read per crop). val/test are unaffected. Evaluate the saved artifact with ``evaluate.py``;
+profile it with ``profile_pipeline.py``.
 """
 
 from __future__ import annotations
