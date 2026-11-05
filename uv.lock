@@ -826,7 +826,7 @@ onnx = [
 
 [[package]]
 name = "cuvis-ai-dataloader"
-version = "0.8.2"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cuvis-ai-core" },
@@ -839,9 +839,9 @@ dependencies = [
     { name = "torch" },
     { name = "torchvision" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/23/47/5219dccbe3f08a83daab52f6c275b7ec54a86448d7bff520347fae8b4fb3/cuvis_ai_dataloader-0.8.2.tar.gz", hash = "sha256:3138094be816b9b689ff8d05f40a4b6808c0a11bb08fc667ef0feb65e47c0cc2", size = 272178, upload-time = "2026-10-16T11:02:54.541Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d0/2f/3d6142f0616a424c94819d704dea39fcb98043fd8451f1d384d16deb45a1/cuvis_ai_dataloader-0.9.1.tar.gz", hash = "sha256:49b69146ef55918b6b7735f4044fcc5f00701a08aba9fa38634e7ee33b359d07", size = 361213, upload-time = "2026-11-05T13:39:44.569Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/84/43/63c180b15694b0ef0fd14d1834d1bee736c9ae6f6255edad1a680b2ef85b/cuvis_ai_dataloader-0.8.2-py3-none-any.whl", hash = "sha256:33e81cea6ecd55dae7d0775885928d5ab5630ea52f7e3e28c280854f90383025", size = 95474, upload-time = "2026-10-16T11:02:53.125Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/30/f1f2505853365d5f74bc9e7653fe7a63a2480e317c1f10a45e1fffb8d4b5/cuvis_ai_dataloader-0.9.1-py3-none-any.whl", hash = "sha256:feebd476ed093c37eca0475d097f32007734b46dc4951ed3218a77a3bdaddd7e", size = 96703, upload-time = "2026-11-05T13:39:43.022Z" },
 ]
 
 [package.optional-dependencies]
@@ -931,7 +931,7 @@ requires-dist = [
     { name = "cuvis-ai-core", specifier = ">=0.19.2" },
     { name = "cuvis-ai-core", marker = "extra == 'notebooks'", specifier = ">=0.19.3" },
     { name = "cuvis-ai-core", extras = ["onnx"], marker = "extra == 'dev'", specifier = ">=0.19.2" },
-    { name = "cuvis-ai-dataloader", extras = ["coco", "cu3s"], marker = "extra == 'notebooks'", specifier = ">=0.8.2" },
+    { name = "cuvis-ai-dataloader", extras = ["coco", "cu3s"], marker = "extra == 'notebooks'", specifier = ">=0.9.1" },
     { name = "cuvis-ai-schemas", specifier = ">=0.8.0" },
     { name = "detect-secrets", marker = "extra == 'dev'" },
     { name = "huggingface-hub", marker = "extra == 'notebooks'" },
