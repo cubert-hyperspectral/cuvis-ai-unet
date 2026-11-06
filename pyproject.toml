@@ -115,11 +115,6 @@ default-groups = ["cuda"]
 # in this checkout - a cu128 torch next to a PyPI torchvision dies with
 # "operator torchvision::nms does not exist".
 cuda = ["torch", "torchvision"]
-# tests/test_transforms.py checks the lentils examples' read-once crop against cuvis-ai-augment
-# (CI: `uv run --extra dev --group augment pytest`). Augment ships as git tags, not on PyPI, so it
-# is neither a dependency nor an extra, and the group is not a default one: `uv build
-# --no-sources` and `uv run --no-sources` resolve the default groups from PyPI.
-augment = ["cuvis-ai-augment>=0.5.0"]
 
 # The cu128 pin is scoped to the `cuda` dependency group (installed by default here)
 # because uv also reads a git or path dependency's `[tool.uv.sources]`: an unscoped
@@ -131,7 +126,6 @@ augment = ["cuvis-ai-augment>=0.5.0"]
 [tool.uv.sources]
 torch = { index = "pytorch-cu128", group = "cuda" }
 torchvision = { index = "pytorch-cu128", group = "cuda" }
-cuvis-ai-augment = { git = "https://github.com/cubert-hyperspectral/cuvis-ai-augment.git", tag = "v0.5.0", group = "augment" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
