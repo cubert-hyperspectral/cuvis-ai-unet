@@ -6,8 +6,8 @@ trained checkpoint, sweeping ``tile_overlap`` in {0.0, 0.25, 0.5}.
 
 Method notes:
 - Frames are pre-loaded to the GPU, so the reported numbers are pure compute.
-  Disk read is the known full-frame-reload bottleneck; it is measured once and
-  reported separately, NOT folded into the node timings.
+  Reading a frame from its cu3s recording is the known full-frame bottleneck; it is
+  measured once and reported separately, NOT folded into the node timings.
 - GPU work is async, so every timed region is bracketed by torch.cuda.synchronize().
 - A warmup pass at the heaviest overlap absorbs cuDNN autotune + lazy allocation.
 - tile_gaussian is left at its configured value. At overlap 0 the Gaussian is a
@@ -22,8 +22,8 @@ per-node profiler); kept because it validated those numbers independently.
 from __future__ import annotations
 
 import argparse
-import csv
 import os
+import sys
 import time
 
 import numpy as np
@@ -36,12 +36,16 @@ from cuvis_ai_schemas.execution import Context
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+# The test frames are read through the lentils examples' engine.
+sys.path.insert(0, os.path.join(REPO_ROOT, "examples", "lentils"))
+import _engine as eng  # noqa: E402
 
 ap = argparse.ArgumentParser(
     description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
 )
 ap.add_argument("--ckpt", required=True, help="raw torch_layers.state_dict() .pt")
-ap.add_argument("--splits-csv", required=True)
+ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
 ap.add_argument("--config", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml"))
 ap.add_argument("--frames", type=int, default=8)
 ap.add_argument("--warmup", type=int, default=2)
@@ -51,7 +55,8 @@ ap.add_argument(
     "--augment-manifest", default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml")
 )
 args = ap.parse_args()
-UNET, AUG, CSV = args.unet_manifest, args.augment_manifest, args.splits_csv
+UNET, AUG = args.unet_manifest, args.augment_manifest
+UNIVERSE, SPLITS = args.universe_csv, args.splits_json
 YAML, CKPT = args.config, args.ckpt
 FRAMES, WARMUP = args.frames, args.warmup
 OVERLAPS = [float(x) for x in args.overlaps.split(",")]
@@ -93,26 +98,19 @@ def main() -> None:
         flush=True,
     )
 
-    # Pre-load frames to the GPU so the node timings are pure compute (disk I/O excluded).
-    rows = list(csv.DictReader(open(CSV)))
-    seen: set[str] = set()
-    test = [
-        r["npz_path"]
-        for r in rows
-        if r["split"] == "test" and not (r["npz_path"] in seen or seen.add(r["npz_path"]))
-    ][:FRAMES]
+    # Pre-load frames to the GPU so the node timings are pure compute (cu3s reads excluded).
+    dataset = eng.split_dataset(UNIVERSE, SPLITS, "test")
     cubes, load_ms = [], []
-    for p in test:
+    for i in range(min(FRAMES, len(dataset))):
         t0 = time.perf_counter()
-        z = np.load(p)
-        cube = torch.from_numpy(z["cube"].astype("float32")).unsqueeze(0)
+        cube = eng._as_tensor(dataset[i]["cube"]).float().unsqueeze(0)
         load_ms.append((time.perf_counter() - t0) * 1e3)
         cubes.append(cube.to(device))
     _sync()
     hw = (cubes[0].shape[1], cubes[0].shape[2])
     print(
         f"[prof] {len(cubes)} frames pre-loaded to {device} | frame {hw[0]}x{hw[1]} "
-        f"bands={cubes[0].shape[-1]} | mean disk-read={np.mean(load_ms):.0f} ms/frame "
+        f"bands={cubes[0].shape[-1]} | mean cu3s read={np.mean(load_ms):.0f} ms/frame "
         f"(EXCLUDED from the compute timings below)",
         flush=True,
     )

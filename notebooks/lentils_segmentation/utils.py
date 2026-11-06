@@ -16,11 +16,11 @@ background — using the dataset's published full split (808 train / 148 val / 1
 Data workflow
 -------------
 The notebooks fetch the 61-band VNIR (430–910 nm) foreign-object dataset from HuggingFace with
-:class:`cuvis_ai_core.data.public_datasets.PublicDatasets`, then convert the ``splits.csv`` frames
-to per-frame NPZ (baked binary ``mask`` + multi-class ``class_mask``) with cuvis-ai-dataloader's
-``convert_split_manifest``. That emits a **universe.csv** (``source, index, materialized_path``) and a
-**splits.json** (a core ``DataSplitConfig`` of file-index selectors) which ``MultiNpzDataModule``
-(``npz_multi``) reads. Converting cu3s needs ``cuvis-ai-dataloader[cu3s,coco]`` + the Cuvis SDK.
+:class:`cuvis_ai_core.data.public_datasets.PublicDatasets`. It ships a **universe.csv** (one row per
+frame: recording, index, COCO file) and **splits/adaclip.json** (a core ``DataSplitConfig`` of
+file-index selectors), which cuvis-ai-dataloader's ``MultiCu3sDataModule`` (``cu3s_multi``) reads
+as they are: every frame comes straight from its cu3s recording, its ``mask`` holds the COCO
+category ids. Reading cu3s needs ``cuvis-ai-dataloader[cu3s,coco]`` + the Cuvis SDK.
 """
 
 from __future__ import annotations
@@ -67,23 +67,6 @@ def resolve_pipeline(pipeline_dir: str | Path = DEFAULT_PIPELINE_DIR) -> tuple[P
     if not pt_path.is_file():
         raise FileNotFoundError(f"Missing weights next to {yaml_path.name}: {pt_path}")
     return yaml_path, pt_path
-
-
-# --------------------------------------------------------------------------- data
-def load_lentils_frame(npz_path: str | Path) -> dict[str, np.ndarray]:
-    """Load a per-frame NPZ -> ``{cube [H,W,C] f32, wavelengths [C] i32, mask [H,W] i32,
-    class_mask [H,W] u8}`` (mask/class_mask zeros when the frame is normal / unlabeled)."""
-    with np.load(npz_path) as z:
-        cube = np.asarray(z["cube"], dtype=np.float32)
-        wl = np.asarray(z["wavelengths"]).ravel().astype(np.int32, copy=False)
-        h, w = cube.shape[0], cube.shape[1]
-        mask = np.asarray(z["mask"], np.int32) if "mask" in z.files else np.zeros((h, w), np.int32)
-        class_mask = (
-            np.asarray(z["class_mask"], np.uint8)
-            if "class_mask" in z.files
-            else np.zeros((h, w), np.uint8)
-        )
-    return {"cube": cube, "wavelengths": wl, "mask": mask, "class_mask": class_mask}
 
 
 # --------------------------------------------------------------------------- visualisation

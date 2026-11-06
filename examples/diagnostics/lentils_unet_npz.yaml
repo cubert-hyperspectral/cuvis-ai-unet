@@ -1,6 +1,6 @@
 metadata:
   name: lentils_unet_npz_binary
-  description: DynUNet binary segmentation — npz_multi loader -> builtin CU3SDataNode -> DynUNet
+  description: DynUNet binary segmentation, cu3s_multi loader into the builtin CU3SDataNode and DynUNet
   author: Anish Raj
 
 # Only our plugin needs a manifest; CU3SDataNode is a built-in cuvis-ai node.
@@ -8,7 +8,7 @@ plugins:
 - unet
 
 nodes:
-# Built-in source node: receives the npz_multi batch (cube/mask/wavelengths by
+# Built-in source node: receives the cu3s_multi batch (cube/mask/wavelengths by
 # name), casts the cube to float32, passes the mask through.
 - name: DataSource
   class_name: cuvis_ai.node.data.CU3SDataNode

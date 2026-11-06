@@ -1,6 +1,6 @@
 """Two-phase training smoke: StatisticalTrainer -> GradientTrainer -> tiled Predictor.
 
-Runs the full production path on lentils via the official npz_multi loader:
+Runs the full production path on lentils via the official cu3s_multi loader:
 Phase 1 statistically initializes the normalizer (its stats serialize with the
 pipeline), Phase 2 gradient-trains DynUNet on fg-biased augment patches, then
 Predictor runs tiled full-frame inference and the script reports val loss and
@@ -13,28 +13,25 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 
 import torch
-from cuvis_ai_dataloader.data.datamodule_npz_multi import MultiNpzDataModule
-from pytorch_lightning.callbacks import Callback
-
-# Full lentils frames are ~263 MB (1000x1080x61 f32); the default file-descriptor
-# sharing strategy pushes these through /dev/shm and exhausts it with several
-# workers. file_system sharing avoids the shm/fd ceiling.
-torch.multiprocessing.set_sharing_strategy("file_system")
-
 from cuvis_ai_core.pipeline.factory import PipelineBuilder
 from cuvis_ai_core.training import GradientTrainer, StatisticalTrainer
 from cuvis_ai_core.training.predictor import Predictor
 from cuvis_ai_core.utils.node_registry import NodeRegistry
+from cuvis_ai_schemas.training.config import TrainingConfig
 from cuvis_ai_schemas.training.optimizer import OptimizerConfig
-from cuvis_ai_schemas.training.trainer import TrainerConfig
+from pytorch_lightning.callbacks import Callback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
 UNET_MANIFEST = os.path.join(REPO_ROOT, "plugins.yaml")
 AUGMENT_MANIFEST = os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml")
+# The cu3s datamodule is built by the lentils examples' engine.
+sys.path.insert(0, os.path.join(REPO_ROOT, "examples", "lentils"))
+import _engine as eng  # noqa: E402
 
 
 class EpochLog(Callback):
@@ -65,11 +62,18 @@ def main() -> None:
     ap.add_argument(
         "--pipeline", default=os.path.join(HERE, "lentils_unet_npz_aug_adaclip2d128.yaml")
     )
-    ap.add_argument("--csv", default=os.path.join(HERE, "lentils_seg_splits.csv"))
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--val-every", type=int, default=10)
-    ap.add_argument("--num-workers", type=int, default=8)
+    ap.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="DataLoader workers; keep 0 (the cuvis SDK reads in this process and workers "
+        "cannot use it on the GPU)",
+    )
     args = ap.parse_args()
 
     reg = NodeRegistry()
@@ -80,12 +84,8 @@ def main() -> None:
     print("pipeline nodes:", [n.name for n in pipeline.nodes])
     nodes = {n.name: n for n in pipeline.nodes}
 
-    dm = MultiNpzDataModule(
-        splits_csv=args.csv,
-        split="test",
-        batch_size=args.batch,
-        num_workers=args.num_workers,
-        persistent_workers=args.num_workers > 0,
+    dm = eng.make_datamodule(
+        args.universe_csv, args.splits_json, batch_size=args.batch, num_workers=args.num_workers
     )
 
     # ---- Phase 1: statistical initialization (normalizer stats on full frames)
@@ -111,7 +111,7 @@ def main() -> None:
         pipeline=pipeline,
         datamodule=dm,
         loss_nodes=[nodes["DiceLoss"], nodes["CrossEntropyLoss"]],
-        trainer_config=TrainerConfig(
+        training_config=TrainingConfig(
             max_epochs=args.epochs,
             accelerator="auto",
             devices=1,
@@ -119,8 +119,8 @@ def main() -> None:
             log_every_n_steps=1,
             enable_checkpointing=False,
             check_val_every_n_epoch=args.val_every,  # tiled full-frame val is expensive
+            optimizer=OptimizerConfig(name="adam", lr=1e-3),
         ),
-        optimizer_config=OptimizerConfig(name="adam", lr=1e-3),
         callbacks=[EpochLog()],
     )
     trainer.fit()

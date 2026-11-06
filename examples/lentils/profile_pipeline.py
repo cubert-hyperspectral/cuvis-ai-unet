@@ -5,7 +5,7 @@ prints DynUNet/Norm ms per frame, fps, and peak memory (plus the full per-node
 table when exactly one combination is requested)::
 
     python profile_pipeline.py --pipeline runs/2d128/pipeline.yaml \
-        --universe-csv lentils_universe.csv --splits-json lentils_adaclip.splits.json \
+        --universe-csv <lentils>/universe.csv --splits-json <lentils>/splits/adaclip.json \
         --overlaps 0,0.5 --tile-batches 1,16
 """
 
@@ -24,10 +24,17 @@ def main() -> None:
     ap.add_argument(
         "--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)"
     )
-    ap.add_argument("--universe-csv", required=True, help="universe.csv from gen_splits.py")
-    ap.add_argument("--splits-json", required=True, help="splits.json from gen_splits.py")
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument("--split", default="test", choices=["train", "val", "test"])
     ap.add_argument("--frames", type=int, default=8)
+    ap.add_argument(
+        "--sdk-cuda",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="process the cubes with the Cuvis SDK on the GPU; --no-sdk-cuda processes them on "
+        "the CPU (no SDK memory on the GPU, slower)",
+    )
     ap.add_argument("--skip", type=int, default=2, help="warmup forwards discarded per combination")
     ap.add_argument("--overlaps", default="0,0.25,0.5", help="comma-separated tile overlaps")
     ap.add_argument("--tile-batches", default="1,16", help="comma-separated tile_batch values")
@@ -49,6 +56,7 @@ def main() -> None:
         skip=args.skip,
         overlaps=tuple(float(x) for x in args.overlaps.split(",")),
         tile_batches=tuple(int(x) for x in args.tile_batches.split(",")),
+        sdk_cuda=args.sdk_cuda,
     )
 
 

@@ -18,7 +18,7 @@ from cuvis_ai_schemas.enums import ExecutionStage, NodeCategory, NodeTag
 from cuvis_ai_schemas.pipeline import PortSpec
 from torch import Tensor
 
-from cuvis_ai_unet.functional import soft_dice_loss, to_bchw_targets
+from cuvis_ai_unet.functional import fold_targets, soft_dice_loss, to_bchw_targets
 
 _LOSS_STAGES = {ExecutionStage.TRAIN, ExecutionStage.VAL, ExecutionStage.TEST}
 
@@ -112,7 +112,9 @@ class CrossEntropyLoss(_SegmentationLoss):
         Optional per-class rescaling passed to ``F.cross_entropy`` (helps with
         the strong class imbalance of small foreign objects).
     ignore_index
-        Target value to exclude from the loss (default -100, PyTorch's default).
+        Target value to exclude from the loss (default -100, PyTorch's default). On two-class
+        logits every other target id above 1 folds into 1 (``functional.fold_targets``), so a
+        void label such as 255 must be passed here or it trains as foreground.
     """
 
     INPUT_SPECS = {"logits": _LOGITS_SPEC, "targets": _TARGETS_SPEC}
@@ -140,6 +142,7 @@ class CrossEntropyLoss(_SegmentationLoss):
     def forward(self, logits: Tensor, targets: Tensor, **_: Any) -> dict[str, Tensor]:
         """Compute the weighted cross-entropy from BHWC logits and a mask."""
         logits_bchw, targets_bhw = to_bchw_targets(logits, targets)
+        targets_bhw = fold_targets(targets_bhw, logits_bchw.shape[1], self.ignore_index)
         buf = getattr(self, "_class_weights", None)
         weights = buf.to(logits_bchw.dtype) if buf is not None else None
         loss = F.cross_entropy(
@@ -172,7 +175,9 @@ class OHEMCrossEntropyLoss(_SegmentationLoss):
     ignore_index
         Target value marking void pixels (this codebase's convention: ``255``).
         Void pixels are excluded from the loss, from the foreground/background
-        partition, and from the mined kept set.
+        partition, and from the mined kept set. The default is -100, so pass 255
+        explicitly: on two-class logits every other target id above 1 folds into 1
+        (``functional.fold_targets``) and an unconfigured void label trains as foreground.
     """
 
     INPUT_SPECS = {"logits": _LOGITS_SPEC, "targets": _TARGETS_SPEC}
@@ -201,6 +206,7 @@ class OHEMCrossEntropyLoss(_SegmentationLoss):
     def forward(self, logits: Tensor, targets: Tensor, **_: Any) -> dict[str, Tensor]:
         """Compute the weighted OHEM cross-entropy from BHWC logits and a mask."""
         logits_bchw, targets_bhw = to_bchw_targets(logits, targets)
+        targets_bhw = fold_targets(targets_bhw, logits_bchw.shape[1], self.ignore_index)
         per_pixel = F.cross_entropy(
             logits_bchw, targets_bhw, reduction="none", ignore_index=self.ignore_index
         )

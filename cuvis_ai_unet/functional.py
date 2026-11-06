@@ -23,6 +23,25 @@ def to_bchw_targets(logits: Tensor, targets: Tensor) -> tuple[Tensor, Tensor]:
     return logits, targets.long()
 
 
+def fold_targets(targets: Tensor, num_classes: int, ignore_index: int | None = None) -> Tensor:
+    """For a two-class net, fold every id above 1 into 1; ``ignore_index`` pixels stay as they are.
+
+    A COCO category-id mask (what the cu3s data modules deliver: 0 = background, 1..N = the
+    object categories) then trains a two-class net as background vs any object, the same target
+    a binary mask gives. Other class counts get the targets back unchanged, so an id outside a
+    multiclass net's range still fails in the loss instead of training as the last class.
+
+    A void label (255, say) survives only as ``ignore_index``: for a two-class net any other id
+    above 1, a void label included, folds into 1 and trains as foreground.
+    """
+    if num_classes != 2:
+        return targets
+    folded = targets.clamp(max=1)
+    if ignore_index is None:
+        return folded
+    return torch.where(targets == ignore_index, targets, folded)
+
+
 def soft_dice_loss(
     logits_bchw: Tensor,
     targets_bhw: Tensor,

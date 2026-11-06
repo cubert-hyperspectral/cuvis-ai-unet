@@ -108,15 +108,15 @@ rely on:
 | requirement | why | status |
 |---|---|---|
 | `cuvis-ai-augment` (not on PyPI) | `AugmentationCompose` + the crop transform in training | install from git; the examples ship a git-tag manifest |
-| running-stats `ZScoreNormalizer` | champion config normalizes with dataset statistics | pending in [cuvis-ai PR #53](https://github.com/cubert-hyperspectral/cuvis-ai/pull/53); until it merges, train with `--normalizer persample` or run from a checkout of that branch |
-| Cuvis C++ SDK + `cuvis-ai-dataloader[cu3s]` | only for converting `.cu3s` sessions to npz | `uv sync --extra notebooks` + a machine-matched `cuvis` pin (documented in the notebooks) |
+| cuvis-ai 0.21.0 or later | `Standardize` fits the champion's z-score statistics on train frames (`--normalizer zscore`, the notebooks) | the `notebooks` extra floors it or run from a checkout of that branch |
+| Cuvis C++ SDK + `cuvis-ai-dataloader[cu3s]` | reading the `.cu3s` recordings (the examples and notebooks read them directly) | `uv sync --extra notebooks` + a machine-matched `cuvis` pin (documented in the notebooks) |
 
 ## Known limitations
 
-- **Data loading dominates end-to-end inference.** Loading one 263 MB deflate-compressed npz frame
-  takes ~1 s vs ~46 ms of 2D compute (tile_batch 16). Fix directions (uncompressed/fp16 storage,
-  prefetch, crop-in-dataset) are tracked in
-  [cuvis-ai-dataloader#14](https://github.com/cubert-hyperspectral/cuvis-ai-dataloader/issues/14).
+- **Data loading dominates end-to-end inference.** Reading one 1000 x 1080 x 61 frame from its
+  `.cu3s` recording takes about 0.16 s on an RTX 4090 (Cuvis SDK 3.6.1 on the GPU, every recording
+  kept open) vs ~46 ms of 2D compute (tile_batch 16). In a DataLoader pass `read_ahead` overlaps
+  the read with the model step.
 - Deep supervision is not implemented (multiple resolution heads complicate the output-port
   contract; add if metrics require it).
 
@@ -127,7 +127,7 @@ rely on:
 - `cuvis_ai_unet/node/dynunet.py` — the `DynUNet` cuvis-ai node (BHWC port wrapper); sliding-window inference and boundary padding come from `cuvis_ai_core.utils.tiling`.
 - `cuvis_ai_unet/node/losses.py` — `DiceLoss` and `CrossEntropyLoss` loss nodes.
 - `cuvis_ai_unet/transforms.py` — vendored `RandomForegroundBiasedCrop` (leaves once upstream ships).
-- `examples/lentils/` — shared engine + `train.py` / `evaluate.py` / `profile_pipeline.py` / `gen_splits.py`.
+- `examples/lentils/` — shared engine + `train.py` / `evaluate.py` / `profile_pipeline.py`.
 - `examples/diagnostics/` — development-era diagnostic scripts (kept runnable, see its README).
 - `notebooks/lentils_segmentation/` — train + inference tutorials on the public lentils dataset.
 - `plugins.yaml` — plugin manifest.

@@ -70,11 +70,19 @@ dev = [
 # the locally installed cuvis SDK (machine-specific), so that pin is a documented step in the
 # notebooks, not a hard pin here.
 notebooks = [
-  "cuvis-ai-dataloader[cu3s,coco]>=0.5.0",  # universe.csv (materialized_path) vocabulary
-  "cuvis-ai>=0.11",  # builtin nodes the notebooks wire (CU3SDataNode, ZScoreNormalizer, TensorBoard monitor)
+  # cu3s_multi bounds its open recordings (max_open_sessions, 0.8.2) and reads a recording's frame
+  # rate only when asked (0.9.0), so the Cuvis SDK no longer logs an error for every opened recording.
+  "cuvis-ai-dataloader[cu3s,coco]>=0.9.1",
+  # Core 0.19.3+ runs the post-fit steps on the readers the fit already holds instead of
+  # reopening every val recording, which with the Cuvis SDK on the GPU ran an 8 GB card out of
+  # memory.
+  "cuvis-ai-core>=0.19.3",
+  # Standardize with fitted statistics (the champion z-score) ships in cuvis-ai 0.21.0, which
+  # removed ZScoreNormalizer; the notebooks also wire CU3SDataNode and the TensorBoard monitor.
+  "cuvis-ai>=0.21.0",
   # cuvis-ai-augment (AugmentationCompose) is git-tag-released, not on PyPI, so it cannot live in
   # this extra: install it alongside, e.g.
-  #   pip install "cuvis-ai-augment @ git+https://github.com/cubert-hyperspectral/cuvis-ai-augment.git@v0.3.2"
+  #   pip install "cuvis-ai-augment @ git+https://github.com/cubert-hyperspectral/cuvis-ai-augment.git@v0.5.0"
   "huggingface_hub",
   "matplotlib",
   "jupyter",

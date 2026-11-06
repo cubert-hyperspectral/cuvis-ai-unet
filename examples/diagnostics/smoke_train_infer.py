@@ -19,7 +19,12 @@ import sys
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lentils_datamodule import LentilsPatchDataset, split_labeled  # noqa: E402
+from lentils_datamodule import (  # noqa: E402
+    LentilsPatchDataset,
+    labeled_frames,
+    split_dataset,
+    split_labeled,
+)
 
 from cuvis_ai_unet.node.dynunet import DynUNet  # noqa: E402
 from cuvis_ai_unet.node.losses import CrossEntropyLoss, DiceLoss  # noqa: E402
@@ -47,20 +52,26 @@ def main() -> None:
     ap.add_argument("--per-frame", type=int, default=4)
     ap.add_argument("--steps", type=int, default=60)
     ap.add_argument("--batch", type=int, default=4)
-    ap.add_argument("--npz-dir", required=True, help="directory of lentils .npz frames")
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument("--out", default="./out")
     args = ap.parse_args()
 
-    target_key = "mask" if args.target == "binary" else "class_mask"
     num_classes = 2 if args.target == "binary" else 8
     device = "cuda" if torch.cuda.is_available() else "cpu"
     os.makedirs(args.out, exist_ok=True)
     print(f"target={args.target} mode={args.mode} classes={num_classes} device={device}")
 
-    train_files, val_files = split_labeled(args.npz_dir, target_key, args.frames, 0.25)
-    print(f"labeled frames: train={len(train_files)} val={len(val_files)}")
-    train_ds = LentilsPatchDataset(train_files, target_key, args.patch, args.per_frame, seed=0)
-    val_ds = LentilsPatchDataset(val_files, target_key, args.patch, args.per_frame, seed=1)
+    # The first labeled frames of the train split; the last quarter of them is val.
+    dataset = split_dataset(args.universe_csv, args.splits_json, "train")
+    train_frames, val_frames = split_labeled(labeled_frames(dataset, args.frames), 0.25)
+    print(f"labeled frames: train={len(train_frames)} val={len(val_frames)}")
+    train_ds = LentilsPatchDataset(
+        dataset, train_frames, args.target, args.patch, args.per_frame, seed=0
+    )
+    val_ds = LentilsPatchDataset(
+        dataset, val_frames, args.target, args.patch, args.per_frame, seed=1
+    )
     print(
         f"patches: train={len(train_ds)} val={len(val_ds)}, bands={train_ds.samples[0][0].shape[-1]}"
     )

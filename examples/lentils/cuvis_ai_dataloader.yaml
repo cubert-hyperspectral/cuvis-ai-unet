@@ -1,13 +1,16 @@
 # cuvis-ai-dataloader plugin manifest (data modules: cu3s / cu3s_multi / npz_multi / tiff_paired).
 # Provisioning this manifest registers the dataloader's data modules so a trainrun / restore can
-# resolve `data_module: npz_multi` (the lentils segmentation notebooks + examples use npz_multi;
-# npz needs no extras). Pass its dir via `--plugins-dir` / `plugins_dirs=[...]`.
+# resolve `data_module: cu3s_multi` (the lentils segmentation notebooks + examples read the cu3s
+# recordings with it; it needs the [cu3s, coco] extras and the Cuvis SDK). Pass its dir via
+# `--plugins-dir` / `plugins_dirs=[...]`. v0.8.2 is the first release whose cu3s_multi bounds its
+# open recordings (`max_open_sessions`); from v0.9.0 the reader reads a recording's frame rate only
+# when asked, so the Cuvis SDK no longer logs an fps-header error for every recording it opens.
 #
 # Dev: uncomment the local path source to run against a sibling checkout instead of the tag.
 name: cuvis_ai_dataloader
 # path: "../../../cuvis-ai-dataloader"
 repo: "https://github.com/cubert-hyperspectral/cuvis-ai-dataloader.git"
-tag: "v0.5.0"
+tag: "v0.9.1"
 package_name: cuvis-ai-dataloader
 capabilities:
   - { class_name: cuvis_ai_dataloader.data.datamodule_cu3s.Cu3sDataModule,              kind: data_module, data_module_name: cu3s,        extras: [cu3s, coco] }

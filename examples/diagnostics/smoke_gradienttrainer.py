@@ -19,8 +19,8 @@ from cuvis_ai_core.pipeline.factory import PipelineBuilder  # noqa: E402
 from cuvis_ai_core.training import GradientTrainer  # noqa: E402
 from cuvis_ai_core.training.predictor import Predictor  # noqa: E402
 from cuvis_ai_core.utils.node_registry import NodeRegistry  # noqa: E402
+from cuvis_ai_schemas.training.config import TrainingConfig  # noqa: E402
 from cuvis_ai_schemas.training.optimizer import OptimizerConfig  # noqa: E402
-from cuvis_ai_schemas.training.trainer import TrainerConfig  # noqa: E402
 from lentils_datamodule import LentilsDataModule  # noqa: E402
 
 PLUGIN_MANIFEST = os.path.join(
@@ -33,6 +33,8 @@ def main() -> None:
     ap.add_argument(
         "--pipeline", default=os.path.join(os.path.dirname(__file__), "lentils_unet_binary.yaml")
     )
+    ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+    ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--frames", type=int, default=12)
     args = ap.parse_args()
@@ -45,14 +47,20 @@ def main() -> None:
     loss_nodes = [nodes["DiceLoss"], nodes["CrossEntropyLoss"]]
 
     dm = LentilsDataModule(
-        target="binary", patch=128, per_frame=4, max_frames=args.frames, batch_size=4
+        universe_csv=args.universe_csv,
+        splits_json=args.splits_json,
+        target="binary",
+        patch=128,
+        per_frame=4,
+        max_frames=args.frames,
+        batch_size=4,
     )
 
     trainer = GradientTrainer(
         pipeline=pipeline,
         datamodule=dm,
         loss_nodes=loss_nodes,
-        trainer_config=TrainerConfig(
+        training_config=TrainingConfig(
             max_epochs=args.epochs,
             accelerator="auto",
             devices=1,
@@ -60,8 +68,8 @@ def main() -> None:
             log_every_n_steps=1,
             enable_checkpointing=False,
             check_val_every_n_epoch=1,
+            optimizer=OptimizerConfig(name="adam", lr=1e-3),
         ),
-        optimizer_config=OptimizerConfig(name="adam", lr=1e-3),
     )
     trainer.fit()
     print("TRAINING via GradientTrainer.fit() completed")

@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from cuvis_ai_unet.functional import soft_dice_loss, to_bchw_targets
+from cuvis_ai_unet.functional import fold_targets, soft_dice_loss, to_bchw_targets
 
 pytestmark = pytest.mark.unit
 
@@ -63,3 +63,15 @@ def test_dice_exclude_background_runs() -> None:
     tgt = torch.randint(0, 4, (2, 10, 8))
     loss = soft_dice_loss(_perfect_logits(tgt, 4), tgt, include_background=False)
     assert loss.item() < 1e-3
+
+
+def test_fold_targets_maps_ids_above_the_last_class() -> None:
+    targets = torch.tensor([[0, 1, 2, 7, 255, -100]])
+    assert fold_targets(targets, 2).tolist() == [[0, 1, 1, 1, 1, -100]]
+    assert fold_targets(targets, 2, ignore_index=255).tolist() == [[0, 1, 1, 1, 255, -100]]
+
+
+def test_fold_targets_leaves_multiclass_targets_alone() -> None:
+    # Only a two-class net folds; a multiclass net keeps out-of-range ids so the loss raises.
+    targets = torch.tensor([[0, 1, 2, 7, -100]])
+    assert fold_targets(targets, 4, ignore_index=-100).tolist() == targets.tolist()

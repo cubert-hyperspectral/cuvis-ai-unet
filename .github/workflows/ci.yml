@@ -27,9 +27,15 @@ jobs:
       # --locked uses the committed uv.lock, which is resolved with the group-scoped cu128
       # source (the default `cuda` group pins torch to the cu128 index for this checkout only;
       # consumers never install it). `-m "not slow"` keeps the `integration` manifest-loading
-      # smoke test on (the skill's required verification step).
+      # smoke test on (the skill's required verification step). tests/test_transforms.py needs
+      # cuvis-ai-augment, which ships as git tags (not on PyPI), so it is no dependency, extra or
+      # group (`uv run --no-sources` resolves every group from PyPI); its own dependencies are in
+      # the dev env already, hence --no-deps, and `uv run` keeps it (it does not remove extras).
+      # Pinned to the commit of tag v0.5.0 (a tag can move, a commit cannot).
       - name: Run tests
         run: |
+          uv sync --locked --extra dev
+          uv pip install --no-deps "cuvis-ai-augment @ git+https://github.com/cubert-hyperspectral/cuvis-ai-augment.git@e44a71de5ca0bc7ffe527647919fd9844c63a1d9"
           uv run --locked --extra dev pytest tests/ -m "not slow" -v --tb=long -ra \
             --cov=cuvis_ai_unet \
             --cov-report=xml \

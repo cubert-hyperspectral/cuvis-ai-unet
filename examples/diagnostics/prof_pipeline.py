@@ -12,7 +12,7 @@ DynUNet do work:
   - the file-reading DataSource is dropped from the loaded config because we inject
     cubes directly via the batch (stages are declared on the node class since
     cuvis-ai-core 0.14.1, so a node cannot be switched off per instance).
-Frames are pre-loaded to the device so node timings are pure compute; disk read is
+Frames are pre-loaded to the device so node timings are pure compute; the cu3s read is
 measured once and reported separately. synchronize_cuda=True makes the profiler bracket
 each node.forward with a CUDA sync (accurate GPU wall-clock); skip_first_n discards
 warmup samples (cuDNN autotune / lazy alloc).
@@ -25,8 +25,8 @@ mechanics; this copy stays as the standalone diagnostic it originated as.
 from __future__ import annotations
 
 import argparse
-import csv
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -39,6 +39,9 @@ from cuvis_ai_schemas.enums import ExecutionStage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+# The test frames are read through the lentils examples' engine.
+sys.path.insert(0, os.path.join(REPO_ROOT, "examples", "lentils"))
+import _engine as eng  # noqa: E402
 
 ap = argparse.ArgumentParser(
     description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -47,7 +50,8 @@ ap.add_argument("--pipeline", required=True, help="canonical artifact YAML (save
 ap.add_argument(
     "--weights", default=None, help="artifact weights .pt (default: alongside --pipeline)"
 )
-ap.add_argument("--splits-csv", required=True)
+ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+ap.add_argument("--splits-json", required=True, help="the HF dataset's splits/adaclip.json")
 ap.add_argument("--frames", type=int, default=8)
 ap.add_argument("--skip", type=int, default=2)
 ap.add_argument("--overlaps", default="0,0.25,0.5")
@@ -57,7 +61,8 @@ ap.add_argument(
     "--augment-manifest", default=os.path.join(REPO_ROOT, "examples", "lentils", "augment.yaml")
 )
 args = ap.parse_args()
-UNET, AUG, CSV = args.unet_manifest, args.augment_manifest, args.splits_csv
+UNET, AUG = args.unet_manifest, args.augment_manifest
+UNIVERSE, SPLITS = args.universe_csv, args.splits_json
 CONFIG = args.pipeline
 WEIGHTS = args.weights or os.path.splitext(args.pipeline)[0] + ".pt"
 FRAMES, SKIP = args.frames, args.skip
@@ -114,23 +119,16 @@ def main() -> None:
     )
 
     # Pre-load frames to the device; node timings below are pure compute.
-    rows = list(csv.DictReader(open(CSV)))
-    seen: set[str] = set()
-    test = [
-        r["npz_path"]
-        for r in rows
-        if r["split"] == "test" and not (r["npz_path"] in seen or seen.add(r["npz_path"]))
-    ][:FRAMES]
+    dataset = eng.split_dataset(UNIVERSE, SPLITS, "test")
     batches, load_ms = [], []
-    for p in test:
+    for i in range(min(FRAMES, len(dataset))):
         t0 = time.perf_counter()
-        z = np.load(p)
-        cube = torch.from_numpy(z["cube"].astype("float32")).unsqueeze(0)
+        cube = eng._as_tensor(dataset[i]["cube"]).float().unsqueeze(0)
         load_ms.append((time.perf_counter() - t0) * 1e3)
         batches.append({"cube": cube.to(device)})
     print(
         f"[prof] {len(batches)} frames on {device} | frame {tuple(batches[0]['cube'].shape)} "
-        f"| mean disk-read={np.mean(load_ms):.0f} ms/frame (EXCLUDED from node timings)",
+        f"| mean cu3s read={np.mean(load_ms):.0f} ms/frame (EXCLUDED from node timings)",
         flush=True,
     )
 

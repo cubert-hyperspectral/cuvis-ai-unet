@@ -6,7 +6,8 @@ CPU is timed on a small region (tractable) and extrapolated per-tile; GPU is tim
 on the full frame. Weights are untrained — timing is weight-independent."""
 
 import argparse
-import glob
+import os
+import sys
 import time
 
 import numpy as np
@@ -15,11 +16,23 @@ from cuvis_ai_core.utils.tiling import compute_tile_offsets, sliding_window_infe
 
 from cuvis_ai_unet.node.dynunet import DynUNet
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+# The frame is read through the lentils examples' engine.
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "lentils"))
+import _engine as eng  # noqa: E402
+
 ap = argparse.ArgumentParser(description=__doc__)
-ap.add_argument("--npz-dir", required=True, help="directory of lentils .npz frames (first is used)")
+ap.add_argument("--universe-csv", required=True, help="the HF dataset's universe.csv")
+ap.add_argument(
+    "--splits-json",
+    required=True,
+    help="the HF dataset's splits/adaclip.json (frame 0 of its test split is used)",
+)
 args = ap.parse_args()
 
-CUBE = np.load(sorted(glob.glob(args.npz_dir + "/*.npz"))[0])["cube"].astype("float32")
+CUBE = np.asarray(
+    eng.split_dataset(args.universe_csv, args.splits_json, "test")[0]["cube"], dtype=np.float32
+)
 Hf, Wf, C = CUBE.shape
 TILE = 128
 
