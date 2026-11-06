@@ -112,7 +112,9 @@ class CrossEntropyLoss(_SegmentationLoss):
         Optional per-class rescaling passed to ``F.cross_entropy`` (helps with
         the strong class imbalance of small foreign objects).
     ignore_index
-        Target value to exclude from the loss (default -100, PyTorch's default).
+        Target value to exclude from the loss (default -100, PyTorch's default). On two-class
+        logits every other target id above 1 folds into 1 (``functional.fold_targets``), so a
+        void label such as 255 must be passed here or it trains as foreground.
     """
 
     INPUT_SPECS = {"logits": _LOGITS_SPEC, "targets": _TARGETS_SPEC}
@@ -173,7 +175,9 @@ class OHEMCrossEntropyLoss(_SegmentationLoss):
     ignore_index
         Target value marking void pixels (this codebase's convention: ``255``).
         Void pixels are excluded from the loss, from the foreground/background
-        partition, and from the mined kept set.
+        partition, and from the mined kept set. The default is -100, so pass 255
+        explicitly: on two-class logits every other target id above 1 folds into 1
+        (``functional.fold_targets``) and an unconfigured void label trains as foreground.
     """
 
     INPUT_SPECS = {"logits": _LOGITS_SPEC, "targets": _TARGETS_SPEC}

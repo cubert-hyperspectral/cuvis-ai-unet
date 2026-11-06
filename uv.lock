@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
@@ -776,6 +776,18 @@ onnx = [
 ]
 
 [[package]]
+name = "cuvis-ai-augment"
+version = "0.5.0"
+source = { git = "https://github.com/cubert-hyperspectral/cuvis-ai-augment.git?tag=v0.5.0#e44a71de5ca0bc7ffe527647919fd9844c63a1d9" }
+dependencies = [
+    { name = "cuvis-ai-core" },
+    { name = "cuvis-ai-schemas" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "torch" },
+]
+
+[[package]]
 name = "cuvis-ai-core"
 version = "0.19.3"
 source = { registry = "https://pypi.org/simple" }
@@ -888,6 +900,7 @@ proto = [
 [[package]]
 name = "cuvis-ai-unet"
 source = { editable = "." }
+default-groups = ["cuda"]
 dependencies = [
     { name = "cuvis-ai-core" },
     { name = "cuvis-ai-schemas" },
@@ -918,6 +931,9 @@ notebooks = [
 ]
 
 [package.dev-dependencies]
+augment = [
+    { name = "cuvis-ai-augment" },
+]
 cuda = [
     { name = "torch" },
     { name = "torchvision" },
@@ -949,6 +965,7 @@ requires-dist = [
 provides-extras = ["dev", "notebooks"]
 
 [package.metadata.requires-dev]
+augment = [{ name = "cuvis-ai-augment", git = "https://github.com/cubert-hyperspectral/cuvis-ai-augment.git?tag=v0.5.0" }]
 cuda = [
     { name = "torch", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "cuvis-ai-unet", group = "cuda" } },
     { name = "torchvision", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "cuvis-ai-unet", group = "cuda" } },

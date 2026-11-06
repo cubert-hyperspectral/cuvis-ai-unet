@@ -8,8 +8,8 @@ persists/restores the canonical artifact written by ``pipeline.save_to_file``
 
 Graph (wired here, serialized into every artifact)::
 
-    DataSource ──cube──▶ Norm ──normalized──▶ Augment ──cube──▶ DynUNet ──logits──▶ DiceLoss
-        └───────mask────────────────────────▶   └──────mask───────────────────────▶ CrossEntropyLoss
+    DataSource ──cube──▶ Norm ──cube──▶ Augment ──cube──▶ DynUNet ──logits──▶ DiceLoss
+        └───────mask──────────────────▶   └──────mask───────────────────────▶ CrossEntropyLoss
 
 Norm sits UPSTREAM of Augment so its statistics describe full frames both when
 they are fitted (statistical init) and when they are applied — structural, not a
@@ -567,6 +567,9 @@ def evaluate(
     """
     nodes = {n.name: n for n in pipeline.nodes}
     norm, net = nodes["Norm"], nodes["DynUNet"]
+    # Standardize takes and returns ``cube``; the ZScoreNormalizer of the July checkpoints (the
+    # legacy --config/--raw-ckpt path, cuvis-ai 0.20.x) takes ``data`` and returns ``normalized``.
+    in_port, out_port = ("cube", "cube") if "cube" in norm.INPUT_SPECS else ("data", "normalized")
     if tile_overlap is not None:
         net.tile_overlap = float(tile_overlap)
         if float(tile_overlap) == 0.0:
@@ -587,7 +590,7 @@ def evaluate(
             mask = _as_tensor(frame["mask"]).to(device)
             has_fg = int((mask >= 1).sum()) > 0
             cube = _as_tensor(frame["cube"]).float().unsqueeze(0).to(device)
-            normed = norm.forward(cube=cube)["cube"]
+            normed = norm.forward(**{in_port: cube})[out_port]
             logits = net.forward(normed, context=infer)["logits"][0]  # [H,W,K]
             prob = torch.softmax(logits.float(), dim=-1)[..., 1]  # fg prob [H,W]
             pred = logits.argmax(-1) >= 1

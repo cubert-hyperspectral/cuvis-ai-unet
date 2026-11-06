@@ -30,6 +30,9 @@ def fold_targets(targets: Tensor, num_classes: int, ignore_index: int | None = N
     object categories) then trains a two-class net as background vs any object, the same target
     a binary mask gives. Other class counts get the targets back unchanged, so an id outside a
     multiclass net's range still fails in the loss instead of training as the last class.
+
+    A void label (255, say) survives only as ``ignore_index``: for a two-class net any other id
+    above 1, a void label included, folds into 1 and trains as foreground.
     """
     if num_classes != 2:
         return targets
